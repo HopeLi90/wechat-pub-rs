@@ -1,5 +1,7 @@
 //! Main WeChat client implementation.
 
+use tracing::info;
+
 use crate::auth::TokenManager;
 use crate::error::{Result, WeChatError};
 use crate::http::WeChatHttpClient;
@@ -179,7 +181,7 @@ impl WeChatClient {
         // Validate input
         self.validate_upload_input(markdown_path, &options).await?;
 
-        log::info!("Starting upload process for: {}", markdown_path.display());
+        info!("Starting upload process for: {}", markdown_path.display());
 
         // Step 1: Parse markdown content
         let mut content = self.parse_markdown_file(markdown_path).await?;
@@ -226,7 +228,7 @@ impl WeChatClient {
         let article = self.create_article(&content, &options, html_content, cover_media_id);
         let draft_id = self.draft_manager.create_draft(vec![article]).await?;
 
-        log::info!("Successfully created draft with ID: {draft_id}");
+        info!("Successfully created draft with ID: {draft_id}");
         Ok(draft_id)
     }
 
@@ -252,7 +254,7 @@ impl WeChatClient {
         let markdown_path = Path::new(markdown_path);
         self.validate_upload_input(markdown_path, &options).await?;
 
-        log::info!(
+        info!(
             "Updating draft {} with: {}",
             media_id,
             markdown_path.display()
@@ -299,7 +301,7 @@ impl WeChatClient {
             .update_draft(media_id, vec![article])
             .await?;
 
-        log::info!("Successfully updated draft: {media_id}");
+        info!("Successfully updated draft: {media_id}");
         Ok(())
     }
 

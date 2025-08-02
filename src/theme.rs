@@ -61,6 +61,7 @@ use comrak::{
     ComrakOptions, ComrakPlugins, markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter,
 };
 use std::collections::HashMap;
+use tracing::warn;
 
 // Embed all theme CSS files at compile time
 const DEFAULT_CSS: &str = include_str!("../themes/default.css");
@@ -394,7 +395,7 @@ impl ThemeManager {
     /// Gets highlight CSS for a given theme, falling back to default if not found.
     fn get_highlight_css(&self, theme: &str) -> String {
         self.highlight_css.get(theme).cloned().unwrap_or_else(|| {
-            log::warn!("Highlight theme '{theme}' not found, falling back to 'github'");
+            warn!("Highlight theme '{theme}' not found, falling back to 'github'");
             self.highlight_css
                 .get("github")
                 .cloned()

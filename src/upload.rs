@@ -113,6 +113,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::Semaphore;
+use tracing::{debug, info, warn};
 
 /// Maximum concurrent image uploads to prevent overwhelming the server
 const MAX_CONCURRENT_UPLOADS: usize = 5;
@@ -278,7 +279,7 @@ impl ImageUploader {
             return Ok(Vec::new());
         }
 
-        log::info!("Uploading {} images concurrently", images.len());
+        info!("Uploading {} images concurrently", images.len());
 
         // Create upload tasks
         let tasks: Vec<_> = images
@@ -302,7 +303,7 @@ impl ImageUploader {
         let upload_results: Result<Vec<_>> = results.into_iter().collect();
         let uploads = upload_results?;
 
-        log::info!("Successfully uploaded {} images", uploads.len());
+        info!("Successfully uploaded {} images", uploads.len());
         Ok(uploads)
     }
 
@@ -319,7 +320,7 @@ impl ImageUploader {
             .await
             .map_err(|e| WeChatError::Internal(anyhow::anyhow!("Semaphore error: {}", e)))?;
 
-        log::debug!("Processing image: {}", image_ref.original_url);
+        debug!("Processing image: {}", image_ref.original_url);
 
         // Load image data
         let image_data = if image_ref.is_local {
@@ -332,11 +333,11 @@ impl ImageUploader {
         // Calculate BLAKE3 hash of the image content
         let hash = blake3::hash(&image_data);
         let hash_str = hash.to_hex().to_string();
-        log::debug!("Image hash: {hash_str}");
+        debug!("Image hash: {hash_str}");
 
         // Check if this image already exists by searching materials
         if let Some(existing_url) = self.find_existing_image_by_hash(&hash_str).await? {
-            log::info!("Image already exists with hash {hash_str}, reusing URL: {existing_url}");
+            info!("Image already exists with hash {hash_str}, reusing URL: {existing_url}");
 
             // Extract media_id from URL (format: https://mmbiz.qpic.cn/mmbiz_jpg/{media_id}/0)
             let media_id = existing_url
@@ -355,7 +356,7 @@ impl ImageUploader {
         // Use hash as filename with appropriate extension
         let extension = self.get_image_extension(&image_ref.original_url, &image_data);
         let filename = format!("{hash_str}.{extension}");
-        log::debug!("Uploading new image with filename: {filename}");
+        debug!("Uploading new image with filename: {filename}");
 
         // Upload to WeChat
         let access_token = self.token_manager.get_access_token().await?;
@@ -380,11 +381,9 @@ impl ImageUploader {
             image_upload.media_id
         );
 
-        log::info!(
+        info!(
             "Successfully uploaded new image: {} -> {} (hash: {})",
-            image_ref.original_url,
-            url,
-            hash_str
+            image_ref.original_url, url, hash_str
         );
 
         Ok(UploadResult {
@@ -412,7 +411,7 @@ impl ImageUploader {
             });
         }
 
-        log::debug!(
+        debug!(
             "Loading local image: {} ({} bytes)",
             path.display(),
             file_size
@@ -426,7 +425,7 @@ impl ImageUploader {
 
     /// Downloads image data from remote URL with size validation.
     async fn download_remote_image(&self, url: &str) -> Result<Vec<u8>> {
-        log::debug!("Downloading remote image: {url}");
+        debug!("Downloading remote image: {url}");
 
         self.http_client
             .download_with_limit(url, MAX_DOWNLOAD_SIZE)
@@ -470,7 +469,7 @@ impl ImageUploader {
 
     /// Searches for an existing material by hash and returns both URL and media_id.
     async fn find_material_by_hash(&self, hash_str: &str) -> Result<Option<(String, String)>> {
-        log::debug!("Checking for existing material with hash: {hash_str}");
+        debug!("Checking for existing material with hash: {hash_str}");
 
         // Check the most recent 20 materials
         let access_token = self.token_manager.get_access_token().await?;
@@ -490,7 +489,7 @@ impl ImageUploader {
             )
             .await
             .map_err(|e| {
-                log::warn!("Failed to list materials: {e}");
+                warn!("Failed to list materials: {e}");
                 e
             });
 
@@ -510,11 +509,9 @@ impl ImageUploader {
                     // Check if any material name starts with our hash
                     for item in material_list.item {
                         if item.name.starts_with(hash_str) {
-                            log::info!(
+                            info!(
                                 "Found existing material with hash {}: URL {} (media_id: {})",
-                                hash_str,
-                                item.url,
-                                item.media_id
+                                hash_str, item.url, item.media_id
                             );
                             return Ok(Some((item.url, item.media_id)));
                         }
@@ -522,11 +519,11 @@ impl ImageUploader {
                 }
             }
             Err(e) => {
-                log::warn!("Failed to parse material list response: {e}");
+                warn!("Failed to parse material list response: {e}");
             }
         }
 
-        log::debug!("No existing material found with hash: {hash_str}");
+        debug!("No existing material found with hash: {hash_str}");
         Ok(None)
     }
 
@@ -539,7 +536,7 @@ impl ImageUploader {
 
     /// Uploads a cover image as permanent material.
     pub async fn upload_cover_material(&self, cover_path: &Path) -> Result<String> {
-        log::info!(
+        info!(
             "Uploading cover image as permanent material: {}",
             cover_path.display()
         );
@@ -550,20 +547,18 @@ impl ImageUploader {
         // Calculate BLAKE3 hash of the image content
         let hash = blake3::hash(&image_data);
         let hash_str = hash.to_hex().to_string();
-        log::debug!("Cover image hash: {hash_str}");
+        debug!("Cover image hash: {hash_str}");
 
         // Check if this image already exists by searching materials
         if let Some((_existing_url, media_id)) = self.find_material_by_hash(&hash_str).await? {
-            log::info!(
-                "Cover image already exists with hash {hash_str}, reusing media_id: {media_id}"
-            );
+            info!("Cover image already exists with hash {hash_str}, reusing media_id: {media_id}");
             return Ok(media_id);
         }
 
         // Use hash as filename with appropriate extension
         let extension = self.get_image_extension(&cover_path.to_string_lossy(), &image_data);
         let filename = format!("{hash_str}.{extension}");
-        log::debug!("Uploading new cover image with filename: {filename}");
+        debug!("Uploading new cover image with filename: {filename}");
 
         // Upload as permanent material (different API endpoint than regular images)
         let access_token = self.token_manager.get_access_token().await?;
@@ -576,7 +571,7 @@ impl ImageUploader {
         let upload_response: WeChatResponse<MaterialUploadResponse> = response.json().await?;
         let material = upload_response.into_result()?;
 
-        log::info!(
+        info!(
             "Successfully uploaded cover image: {} -> media_id: {}",
             cover_path.display(),
             material.media_id
@@ -621,11 +616,11 @@ impl DraftManager {
         }
 
         let title = &articles[0].title;
-        log::info!("Processing draft with title: {title}");
+        info!("Processing draft with title: {title}");
 
         // Check recent drafts for matching title
         if let Some(existing_media_id) = self.find_draft_by_title(title).await? {
-            log::info!(
+            info!(
                 "Found existing draft with title '{title}', updating media_id: {existing_media_id}"
             );
 
@@ -635,7 +630,7 @@ impl DraftManager {
         }
 
         // No existing draft found, create new one
-        log::info!("No existing draft found, creating new draft");
+        info!("No existing draft found, creating new draft");
 
         let request = DraftRequest { articles };
         let access_token = self.token_manager.get_access_token().await?;
@@ -648,7 +643,7 @@ impl DraftManager {
         let draft_response: WeChatResponse<DraftResponse> = response.json().await?;
         let draft = draft_response.into_result()?;
 
-        log::info!(
+        info!(
             "Successfully created new draft with media_id: {}",
             draft.media_id
         );
@@ -657,7 +652,7 @@ impl DraftManager {
 
     /// Gets a draft by media ID.
     pub async fn get_draft(&self, media_id: &str) -> Result<DraftInfo> {
-        log::debug!("Getting draft: {media_id}");
+        debug!("Getting draft: {media_id}");
 
         let access_token = self.token_manager.get_access_token().await?;
         let request = serde_json::json!({ "media_id": media_id });
@@ -679,7 +674,7 @@ impl DraftManager {
             ));
         }
 
-        log::info!(
+        info!(
             "Updating draft {} with {} articles",
             media_id,
             articles.len()
@@ -702,13 +697,13 @@ impl DraftManager {
         let update_response: WeChatResponse<serde_json::Value> = response.json().await?;
         update_response.into_result()?;
 
-        log::info!("Successfully updated draft: {media_id}");
+        info!("Successfully updated draft: {media_id}");
         Ok(())
     }
 
     /// Deletes a draft.
     pub async fn delete_draft(&self, media_id: &str) -> Result<()> {
-        log::info!("Deleting draft: {media_id}");
+        info!("Deleting draft: {media_id}");
 
         let request = serde_json::json!({ "media_id": media_id });
         let access_token = self.token_manager.get_access_token().await?;
@@ -721,13 +716,13 @@ impl DraftManager {
         let delete_response: WeChatResponse<serde_json::Value> = response.json().await?;
         delete_response.into_result()?;
 
-        log::info!("Successfully deleted draft: {media_id}");
+        info!("Successfully deleted draft: {media_id}");
         Ok(())
     }
 
     /// Lists drafts with pagination.
     pub async fn list_drafts(&self, offset: u32, count: u32) -> Result<Vec<DraftInfo>> {
-        log::debug!("Listing drafts: offset={offset}, count={count}");
+        debug!("Listing drafts: offset={offset}, count={count}");
 
         let request = serde_json::json!({
             "offset": offset,
@@ -745,7 +740,7 @@ impl DraftManager {
         let list_response: WeChatResponse<DraftListResponse> = response.json().await?;
         let drafts = list_response.into_result()?;
 
-        log::debug!("Found {} drafts", drafts.item.len());
+        debug!("Found {} drafts", drafts.item.len());
         Ok(drafts.item)
     }
 
@@ -759,13 +754,13 @@ impl DraftManager {
 
     /// Finds a draft by title in recent drafts.
     async fn find_draft_by_title(&self, title: &str) -> Result<Option<String>> {
-        log::debug!("Searching for draft with title: {title}");
+        debug!("Searching for draft with title: {title}");
 
         // List recent 20 drafts
         let drafts = match self.list_drafts(0, 20).await {
             Ok(drafts) => drafts,
             Err(e) => {
-                log::warn!("Failed to list drafts: {e}");
+                warn!("Failed to list drafts: {e}");
                 return Ok(None);
             }
         };
@@ -774,13 +769,13 @@ impl DraftManager {
         for draft in drafts {
             if let Some(first_article) = draft.content.news_item.first() {
                 if first_article.title == title {
-                    log::info!("Found existing draft with matching title");
+                    info!("Found existing draft with matching title");
                     return Ok(Some(draft.media_id));
                 }
             }
         }
 
-        log::debug!("No draft found with title: {title}");
+        debug!("No draft found with title: {title}");
         Ok(None)
     }
 }

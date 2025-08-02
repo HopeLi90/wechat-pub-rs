@@ -17,20 +17,21 @@
 //! ```rust
 //! use wechat_pub_rs::{WeChatError, Result};
 //! use wechat_pub_rs::error::ErrorSeverity;
+//! use tracing::{error, warn};
 //!
 //! fn handle_error(error: WeChatError) {
 //!     match error.severity() {
 //!         ErrorSeverity::Warning => {
-//!             log::warn!("Recoverable error: {}", error);
+//!             warn!("Recoverable error: {}", error);
 //!             if error.is_retryable() {
 //!                 // Implement retry logic
 //!             }
 //!         }
 //!         ErrorSeverity::Error => {
-//!             log::error!("Error occurred: {}", error);
+//!             error!("Error occurred: {}", error);
 //!         }
 //!         ErrorSeverity::Critical => {
-//!             log::error!("Critical error: {}", error);
+//!             error!("Critical error: {}", error);
 //!             // May require immediate attention
 //!         }
 //!     }
@@ -98,10 +99,6 @@ pub enum WeChatError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// URL parsing errors
-    #[error("Invalid URL: {0}")]
-    UrlParse(#[from] url::ParseError),
-
     /// Generic errors for wrapping other error types
     #[error("Internal error: {0}")]
     Internal(#[from] anyhow::Error),
@@ -166,7 +163,6 @@ impl WeChatError {
             WeChatError::ThemeRender { .. }
             | WeChatError::Json(_)
             | WeChatError::Io(_)
-            | WeChatError::UrlParse(_)
             | WeChatError::Internal(_) => ErrorSeverity::Error,
         }
     }

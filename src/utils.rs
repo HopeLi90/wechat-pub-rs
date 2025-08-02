@@ -31,62 +31,6 @@ pub fn is_image_file(path: &Path) -> bool {
     }
 }
 
-/// Sanitizes a string for use as a filename.
-pub fn sanitize_filename(input: &str) -> String {
-    input
-        .chars()
-        .map(|c| match c {
-            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
-            c if c.is_control() => '_',
-            c => c,
-        })
-        .collect::<String>()
-        .trim()
-        .to_string()
-}
-
-/// Truncates text to a maximum length, adding ellipsis if needed.
-pub fn truncate_text(text: &str, max_length: usize) -> String {
-    if text.len() <= max_length {
-        text.to_string()
-    } else {
-        let mut truncated = text.chars().take(max_length).collect::<String>();
-        if truncated.len() < text.len() {
-            truncated.push_str("...");
-        }
-        truncated
-    }
-}
-
-/// Formats file size in human-readable format.
-pub fn format_file_size(size: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    const THRESHOLD: u64 = 1024;
-
-    if size == 0 {
-        return "0 B".to_string();
-    }
-
-    let mut size = size as f64;
-    let mut unit_index = 0;
-
-    while size >= THRESHOLD as f64 && unit_index < UNITS.len() - 1 {
-        size /= THRESHOLD as f64;
-        unit_index += 1;
-    }
-
-    if unit_index == 0 {
-        format!("{} {}", size as u64, UNITS[unit_index])
-    } else {
-        format!("{:.1} {}", size, UNITS[unit_index])
-    }
-}
-
-/// Creates a unique identifier for requests.
-pub fn generate_request_id() -> String {
-    uuid::Uuid::new_v4().to_string()
-}
-
 /// Validates WeChat app credentials format.
 pub fn validate_app_credentials(app_id: &str, app_secret: &str) -> Result<(), String> {
     if app_id.is_empty() {
@@ -159,42 +103,6 @@ mod tests {
         assert!(is_image_file(Path::new("test.gif")));
         assert!(!is_image_file(Path::new("test.txt")));
         assert!(!is_image_file(Path::new("test")));
-    }
-
-    #[test]
-    fn test_sanitize_filename() {
-        assert_eq!(sanitize_filename("hello world"), "hello world");
-        assert_eq!(sanitize_filename("hello/world"), "hello_world");
-        assert_eq!(sanitize_filename("hello:world*test"), "hello_world_test");
-        assert_eq!(sanitize_filename("  hello world  "), "hello world");
-    }
-
-    #[test]
-    fn test_truncate_text() {
-        assert_eq!(truncate_text("hello", 10), "hello");
-        assert_eq!(truncate_text("hello world", 5), "hello...");
-        assert_eq!(truncate_text("hello world", 11), "hello world");
-        assert_eq!(truncate_text("", 5), "");
-    }
-
-    #[test]
-    fn test_format_file_size() {
-        assert_eq!(format_file_size(0), "0 B");
-        assert_eq!(format_file_size(512), "512 B");
-        assert_eq!(format_file_size(1024), "1.0 KB");
-        assert_eq!(format_file_size(1536), "1.5 KB");
-        assert_eq!(format_file_size(1024 * 1024), "1.0 MB");
-        assert_eq!(format_file_size(1024 * 1024 * 1024), "1.0 GB");
-    }
-
-    #[test]
-    fn test_generate_request_id() {
-        let id1 = generate_request_id();
-        let id2 = generate_request_id();
-
-        assert_ne!(id1, id2);
-        assert_eq!(id1.len(), 36); // UUID v4 format
-        assert!(id1.contains('-'));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "wechat-pub-rs"
-version = "0.2.3"
+version = "0.3.0"
 authors = ["tyr.chen@gmail.com>"]
 edition = "2024"
 license = "MIT"
@@ -13,7 +13,7 @@ categories = ["development-tools"]
 keywords = ["wechat", "weixin", "official-account", "sdk"]
 
 [dependencies]
-# HTTP client
+# HTTP client with minimal features
 reqwest = { version = "0.12", default-features = false, features = [
   "json",
   "multipart",
@@ -21,8 +21,14 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
 ] }
 
-# Async runtime
-tokio = { version = "1.0", features = ["full"] }
+tokio = { version = "1.0", default-features = false, features = [
+  "fs",
+  "time",
+  "sync",
+  "rt",
+  "rt-multi-thread",
+  "macros",
+] }
 futures = "0.3"
 
 # Serialization
@@ -40,27 +46,19 @@ syntect = "5.2"
 # Template engine
 askama = "0.14"
 
-# Async utilities
-tokio-util = "0.7"
-
 # Logging
-log = "0.4"
+tracing = "0.1"
 
 # Time handling
 chrono = { version = "0.4", features = ["serde"] }
 
-# File and path utilities
+# File utilities
 mime_guess = "2.0"
 
-# UUID for request IDs
-uuid = { version = "1.0", features = ["v4"] }
-
-# URL manipulation
-url = "2.5"
+# Content hashing for image deduplication
 blake3 = "1.8.2"
 
-# HTML and CSS manipulation
-scraper = "0.23"
+# CSS processing
 regex = "1.5"
 css-inline = "0.17.0"
 

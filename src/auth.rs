@@ -77,6 +77,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::info;
 
 /// Access token with expiration information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,7 +168,7 @@ impl TokenManager {
             return Ok(token);
         }
 
-        log::info!("Refreshing WeChat access token");
+        info!("Refreshing WeChat access token");
 
         // Make API call to get new token
         let url = format!(
@@ -190,7 +191,7 @@ impl TokenManager {
             *cache = Some(new_token);
         }
 
-        log::info!("Successfully refreshed WeChat access token");
+        info!("Successfully refreshed WeChat access token");
         Ok(token_string)
     }
 

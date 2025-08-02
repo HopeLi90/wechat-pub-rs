@@ -5,6 +5,7 @@ use reqwest::{Client, Response, multipart};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::time::sleep;
+use tracing::{debug, warn};
 
 /// Configuration for retry behavior.
 #[derive(Debug, Clone)]
@@ -206,11 +207,9 @@ impl WeChatHttpClient {
 
             // Wait before retry
             if attempt < self.retry_config.max_attempts {
-                log::warn!(
+                warn!(
                     "Request failed (attempt {}/{}), retrying in {:?}",
-                    attempt,
-                    self.retry_config.max_attempts,
-                    delay
+                    attempt, self.retry_config.max_attempts, delay
                 );
 
                 sleep(delay).await;
@@ -280,7 +279,7 @@ impl WeChatHttpClient {
             data.extend_from_slice(&chunk);
         }
 
-        log::debug!("Downloaded {downloaded_size} bytes from {url}");
+        debug!("Downloaded {downloaded_size} bytes from {url}");
         Ok(data)
     }
 }

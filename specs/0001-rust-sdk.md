@@ -561,7 +561,7 @@ impl UploadTransaction {
 
         // 注意：微信不支持删除已上传的图片，这里只做记录
         if !self.uploaded_images.is_empty() {
-            log::warn!("无法删除已上传的图片: {:?}", self.uploaded_images);
+            warn!("无法删除已上传的图片: {:?}", self.uploaded_images);
         }
 
         Ok(())
