@@ -35,6 +35,7 @@
 
 pub mod auth;
 pub mod client;
+pub mod css_vars;
 pub mod error;
 pub mod http;
 pub mod markdown;
@@ -44,6 +45,7 @@ pub mod utils;
 
 // Re-export main types for convenience
 pub use client::{UploadOptions, WeChatClient};
+pub use css_vars::CssVariableProcessor;
 pub use error::{Result, WeChatError};
 pub use theme::BuiltinTheme;
 

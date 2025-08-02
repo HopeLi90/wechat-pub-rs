@@ -2,7 +2,7 @@
 author: 陈小天
 title: 和 Gemini 关于第一性原理的对话
 cover: images/02-cover.png
-theme: maize
+theme: lapis
 code: solarized-light
 ---
 

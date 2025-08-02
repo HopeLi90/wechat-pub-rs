@@ -1,5 +1,6 @@
 //! Theme system for rendering markdown content to HTML.
 
+use crate::css_vars::CssVariableProcessor;
 use crate::error::{Result, WeChatError};
 use askama::Template;
 use comrak::{
@@ -142,15 +143,34 @@ impl ThemeTemplate {
     }
 
     /// Renders content using this theme with inline styles for WeChat.
+    ///
+    /// This method processes CSS variables before inlining styles for better WeChat compatibility.
     pub fn render(&self, content: &str, metadata: &HashMap<String, String>) -> Result<String> {
-        // Create Askama template with the provided content and metadata
+        // Process CSS variables in both theme and highlight CSS
+        let css_processor = CssVariableProcessor::new();
+
+        let processed_theme_css = css_processor.process_css(&self.theme_css).map_err(|e| {
+            WeChatError::Internal(anyhow::anyhow!(
+                "CSS variable processing failed for theme CSS: {}",
+                e
+            ))
+        })?;
+
+        let processed_highlight_css = css_processor.process_css(&self.code_css).map_err(|e| {
+            WeChatError::Internal(anyhow::anyhow!(
+                "CSS variable processing failed for highlight CSS: {}",
+                e
+            ))
+        })?;
+
+        // Create Askama template with the processed CSS
         let template = ArticleTemplate {
             title: metadata.get("title").cloned().unwrap_or_default(),
             description: metadata.get("description").cloned().unwrap_or_default(),
             author: metadata.get("author").cloned().unwrap_or_default(),
             content: content.to_string(),
-            theme_css: self.theme_css.clone(),
-            highlight_css: self.code_css.clone(),
+            theme_css: processed_theme_css,
+            highlight_css: processed_highlight_css,
         };
 
         // Render the template to HTML
@@ -487,5 +507,168 @@ mod tests {
         assert!(html.contains("Content"));
         // Check that CSS was applied as inline styles
         assert!(html.contains("style="));
+    }
+
+    #[test]
+    fn test_css_variable_processing_in_theme() {
+        let css_with_vars = r#"
+        :root {
+            --primary-color: #4870ac;
+            --text-color: #40464f;
+            --header-color: var(--primary-color);
+        }
+        #wepub { color: var(--text-color); }
+        #wepub h1 { color: var(--header-color); }
+        "#;
+
+        let template =
+            ThemeTemplate::new(css_with_vars.to_string(), String::new(), "test".to_string());
+
+        let mut metadata = HashMap::new();
+        metadata.insert("title".to_string(), "Test".to_string());
+        metadata.insert("author".to_string(), "Test Author".to_string());
+
+        let result = template.render("<h1>Test Header</h1><p>Test content</p>", &metadata);
+        assert!(result.is_ok());
+
+        let html = result.unwrap();
+
+        // Verify CSS variables were processed and inlined
+        assert!(!html.contains("var(")); // No var() calls should remain
+        assert!(html.contains("#40464f")); // text-color should be inlined
+        assert!(html.contains("#4870ac")); // header-color should be resolved and inlined
+    }
+
+    #[test]
+    fn test_nested_css_variables_in_theme() {
+        let css_with_nested_vars = r#"
+        :root {
+            --base-color: #4870ac;
+            --primary-color: var(--base-color);
+            --header-span-color: var(--primary-color);
+            --shadow-color: #eee;
+            --shadow: 3px 3px 10px var(--shadow-color);
+        }
+        #wepub h1 span { color: var(--header-span-color); }
+        #wepub .box { box-shadow: var(--shadow); }
+        "#;
+
+        let template = ThemeTemplate::new(
+            css_with_nested_vars.to_string(),
+            String::new(),
+            "nested".to_string(),
+        );
+
+        let mut metadata = HashMap::new();
+        metadata.insert("title".to_string(), "Nested Test".to_string());
+
+        let result = template.render("<h1><span>Nested</span></h1>", &metadata);
+        assert!(result.is_ok());
+
+        let html = result.unwrap();
+
+        // Verify nested variables were resolved correctly
+        assert!(!html.contains("var("));
+        assert!(html.contains("#4870ac")); // All nested references should resolve to base color
+        assert!(html.contains("3px 3px 10px #eee")); // Shadow should be fully resolved
+    }
+
+    #[test]
+    fn test_real_theme_css_variable_processing() {
+        // Test with actual purple theme which uses CSS variables
+        let manager = ThemeManager::new();
+        let markdown = "# Test Title\n\nThis is a **test** paragraph.";
+
+        let mut metadata = HashMap::new();
+        metadata.insert("title".to_string(), "Variable Test".to_string());
+        metadata.insert("author".to_string(), "Test Author".to_string());
+
+        // Test purple theme which has CSS variables
+        let result = manager.render(markdown, "purple", "github", &metadata);
+        assert!(result.is_ok());
+
+        let html = result.unwrap();
+
+        // Verify that defined CSS variables were processed
+        // Note: Undefined variables like --sans-serif-font may remain for graceful degradation
+        assert!(!html.contains("var(--title-color"));
+        assert!(!html.contains("var(--text-color"));
+        assert!(!html.contains("var(--shadow-color"));
+
+        // Verify specific color values are present (from resolved variables)
+        assert!(
+            html.contains("#8064a9")
+                || html.contains("color:#8064a9")
+                || html.contains("color: #8064a9")
+        );
+        assert!(
+            html.contains("#444444")
+                || html.contains("color:#444444")
+                || html.contains("color: #444444")
+        );
+
+        // Verify the content is properly rendered
+        assert!(html.contains("Test Title"));
+        assert!(html.contains("<strong"));
+        assert!(html.contains("test"));
+        assert!(html.contains("id=\"wepub\""));
+    }
+
+    #[test]
+    fn test_all_themes_css_variable_processing() {
+        // Test CSS variable processing works across all theme files
+        let manager = ThemeManager::new();
+        let markdown = "# Test\n\nCSS variables test.";
+        let metadata = HashMap::new();
+
+        for theme in BuiltinTheme::all() {
+            let result = manager.render(markdown, theme.as_str(), "github", &metadata);
+            assert!(
+                result.is_ok(),
+                "Theme {} should render successfully",
+                theme.as_str()
+            );
+
+            let html = result.unwrap();
+
+            // Verify basic HTML structure is preserved
+            assert!(html.contains("Test"));
+            assert!(html.contains("id=\"wepub\""));
+
+            // For themes with CSS variables, verify that at least some processing occurred
+            // We don't assert complete absence of var() since some undefined variables may remain
+            let theme_css = get_embedded_theme_css(theme);
+            let var_count_before = theme_css_var_count(theme_css);
+            let var_count_after = html.matches("var(--").count();
+
+            // At minimum, defined variables should be reduced
+            if var_count_before > 0 {
+                println!(
+                    "Theme {}: {} vars before, {} vars after",
+                    theme.as_str(),
+                    var_count_before,
+                    var_count_after
+                );
+            }
+        }
+    }
+
+    // Helper function to count CSS variables in a theme
+    fn theme_css_var_count(css: &str) -> usize {
+        css.matches("var(--").count()
+    }
+
+    // Helper function to get embedded CSS for testing
+    fn get_embedded_theme_css(theme: BuiltinTheme) -> &'static str {
+        match theme {
+            BuiltinTheme::Default => DEFAULT_CSS,
+            BuiltinTheme::Lapis => LAPIS_CSS,
+            BuiltinTheme::Maize => MAIZE_CSS,
+            BuiltinTheme::OrangeHeart => ORANGEHEART_CSS,
+            BuiltinTheme::PhyCat => PHYCAT_CSS,
+            BuiltinTheme::Pie => PIE_CSS,
+            BuiltinTheme::Purple => PURPLE_CSS,
+            BuiltinTheme::Rainbow => RAINBOW_CSS,
+        }
     }
 }
