@@ -3,7 +3,7 @@
 use crate::error::{Result, WeChatError};
 use askama::Template;
 use comrak::{
-    markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter, ComrakOptions, ComrakPlugins,
+    ComrakOptions, ComrakPlugins, markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter,
 };
 use std::collections::HashMap;
 
@@ -209,31 +209,23 @@ impl ThemeManager {
 
     /// Loads all highlight themes from embedded CSS.
     fn load_highlight_themes(&mut self) {
-        // Load all embedded highlight themes
-        self.highlight_css
-            .insert("atom-one-dark".to_string(), ATOM_ONE_DARK_CSS.to_string());
-        self.highlight_css
-            .insert("atom-one-light".to_string(), ATOM_ONE_LIGHT_CSS.to_string());
-        self.highlight_css
-            .insert("dracula".to_string(), DRACULA_CSS.to_string());
-        self.highlight_css
-            .insert("github-dark".to_string(), GITHUB_DARK_CSS.to_string());
-        self.highlight_css
-            .insert("github".to_string(), GITHUB_CSS.to_string());
-        self.highlight_css
-            .insert("monokai".to_string(), MONOKAI_CSS.to_string());
-        self.highlight_css
-            .insert("solarized-dark".to_string(), SOLARIZED_DARK_CSS.to_string());
-        self.highlight_css.insert(
-            "solarized-light".to_string(),
-            SOLARIZED_LIGHT_CSS.to_string(),
-        );
-        self.highlight_css
-            .insert("xcode".to_string(), XCODE_CSS.to_string());
+        // Array of (theme_name, css_content) pairs for cleaner initialization
+        let highlight_themes = [
+            ("atom-one-dark", ATOM_ONE_DARK_CSS),
+            ("atom-one-light", ATOM_ONE_LIGHT_CSS),
+            ("dracula", DRACULA_CSS),
+            ("github-dark", GITHUB_DARK_CSS),
+            ("github", GITHUB_CSS),
+            ("monokai", MONOKAI_CSS),
+            ("solarized-dark", SOLARIZED_DARK_CSS),
+            ("solarized-light", SOLARIZED_LIGHT_CSS),
+            ("xcode", XCODE_CSS),
+            ("vscode", GITHUB_CSS), // vscode as an alias for github
+        ];
 
-        // Add vscode as an alias for github
-        self.highlight_css
-            .insert("vscode".to_string(), GITHUB_CSS.to_string());
+        for (name, css) in highlight_themes {
+            self.highlight_css.insert(name.to_string(), css.to_string());
+        }
     }
 
     /// Creates a built-in theme template from embedded CSS.

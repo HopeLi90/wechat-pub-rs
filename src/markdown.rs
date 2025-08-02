@@ -1,7 +1,8 @@
 //! Markdown parsing and image extraction module.
 
 use crate::error::{Result, WeChatError};
-use comrak::{nodes::NodeValue, Arena, ComrakOptions};
+use comrak::{Arena, ComrakOptions, nodes::NodeValue};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -63,10 +64,105 @@ pub struct MarkdownContent {
     pub original_text: String,
 }
 
+/// Helper struct for extracting summaries from markdown AST.
+struct SummaryExtractor {
+    summary: String,
+    text_length: usize,
+    max_length: usize,
+    found_paragraph: bool,
+}
+
+impl SummaryExtractor {
+    fn new(max_length: usize) -> Self {
+        Self {
+            summary: String::new(),
+            text_length: 0,
+            max_length,
+            found_paragraph: false,
+        }
+    }
+
+    fn extract_from_node<'a>(&mut self, node: &'a comrak::nodes::AstNode<'a>) -> bool {
+        match &node.data.borrow().value {
+            NodeValue::Paragraph => {
+                if self.found_paragraph {
+                    // We already found a paragraph, stop here
+                    return true;
+                }
+                self.found_paragraph = true;
+                for child in node.children() {
+                    if self.extract_from_node(child) {
+                        break;
+                    }
+                    if self.text_length >= self.max_length {
+                        break;
+                    }
+                }
+                if !self.summary.is_empty() {
+                    return true; // Found first paragraph content, stop processing
+                }
+                self.found_paragraph = false;
+            }
+            NodeValue::Text(text) => {
+                if self.found_paragraph && self.text_length < self.max_length {
+                    let remaining = self.max_length - self.text_length;
+                    if text.len() <= remaining {
+                        self.summary.push_str(text);
+                        self.text_length += text.len();
+                    } else {
+                        self.summary.push_str(&text[..remaining]);
+                        self.summary.push_str("...");
+                        self.text_length = self.max_length;
+                    }
+                }
+            }
+            _ => {
+                for child in node.children() {
+                    if self.extract_from_node(child) {
+                        return true;
+                    }
+                    if self.text_length >= self.max_length {
+                        break;
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
+/// Helper struct for extracting plain text from markdown AST.
+struct PlainTextExtractor {
+    text: String,
+}
+
+impl PlainTextExtractor {
+    fn new() -> Self {
+        Self {
+            text: String::new(),
+        }
+    }
+
+    fn extract_from_node<'a>(&mut self, node: &'a comrak::nodes::AstNode<'a>) {
+        match &node.data.borrow().value {
+            NodeValue::Text(content) => {
+                self.text.push_str(content);
+                self.text.push(' ');
+            }
+            _ => {
+                for child in node.children() {
+                    self.extract_from_node(child);
+                }
+            }
+        }
+    }
+}
+
 impl MarkdownContent {
     /// Replaces image URLs in the content with new URLs.
     pub fn replace_image_urls(&mut self, url_mapping: &HashMap<String, String>) -> Result<()> {
-        let mut content = self.content.clone();
+        // Use Cow to avoid unnecessary allocations when no changes are needed
+        let mut content: Cow<str> = Cow::Borrowed(&self.content);
 
         // Sort images by position in reverse order to avoid position shifting
         let mut sorted_images = self.images.clone();
@@ -78,11 +174,25 @@ impl MarkdownContent {
                 let old_markdown = format!("![{}]({})", image.alt_text, image.original_url);
                 let new_markdown = format!("![{}]({})", image.alt_text, new_url);
 
-                content = content.replace(&old_markdown, &new_markdown);
+                // Only convert to owned string when we actually need to modify
+                match content {
+                    Cow::Borrowed(s) => {
+                        if s.contains(&old_markdown) {
+                            content = Cow::Owned(s.replace(&old_markdown, &new_markdown));
+                        }
+                    }
+                    Cow::Owned(ref mut s) => {
+                        *s = s.replace(&old_markdown, &new_markdown);
+                    }
+                }
             }
         }
 
-        self.content = content;
+        // Only update self.content if we actually made changes
+        if let Cow::Owned(new_content) = content {
+            self.content = new_content;
+        }
+
         Ok(())
     }
 
@@ -91,73 +201,11 @@ impl MarkdownContent {
         let arena = Arena::new();
         let options = ComrakOptions::default();
         let root = comrak::parse_document(&arena, &self.content, &options);
-        let mut summary = String::new();
-        let mut text_length = 0;
-        let mut found_paragraph = false;
 
-        fn collect_text<'a>(
-            node: &'a comrak::nodes::AstNode<'a>,
-            summary: &mut String,
-            max_length: usize,
-            text_length: &mut usize,
-            found_paragraph: &mut bool,
-        ) -> bool {
-            match &node.data.borrow().value {
-                NodeValue::Paragraph => {
-                    if *found_paragraph {
-                        // We already found a paragraph, stop here
-                        return true;
-                    }
-                    *found_paragraph = true;
-                    for child in node.children() {
-                        if collect_text(child, summary, max_length, text_length, found_paragraph) {
-                            break;
-                        }
-                        if *text_length >= max_length {
-                            break;
-                        }
-                    }
-                    if !summary.is_empty() {
-                        return true; // Found first paragraph content, stop processing
-                    }
-                    *found_paragraph = false;
-                }
-                NodeValue::Text(text) => {
-                    if *found_paragraph && *text_length < max_length {
-                        let remaining = max_length - *text_length;
-                        if text.len() <= remaining {
-                            summary.push_str(text);
-                            *text_length += text.len();
-                        } else {
-                            summary.push_str(&text[..remaining]);
-                            summary.push_str("...");
-                            *text_length = max_length;
-                        }
-                    }
-                }
-                _ => {
-                    for child in node.children() {
-                        if collect_text(child, summary, max_length, text_length, found_paragraph) {
-                            return true;
-                        }
-                        if *text_length >= max_length {
-                            break;
-                        }
-                    }
-                }
-            }
-            false
-        }
+        let mut extractor = SummaryExtractor::new(max_length);
+        extractor.extract_from_node(root);
 
-        collect_text(
-            root,
-            &mut summary,
-            max_length,
-            &mut text_length,
-            &mut found_paragraph,
-        );
-
-        if summary.is_empty() {
+        if extractor.summary.is_empty() {
             // Fallback: take first characters of content
             let content_text = self.extract_plain_text();
             if content_text.len() > max_length {
@@ -166,7 +214,7 @@ impl MarkdownContent {
                 content_text
             }
         } else {
-            summary
+            extractor.summary
         }
     }
 
@@ -175,24 +223,105 @@ impl MarkdownContent {
         let arena = Arena::new();
         let options = ComrakOptions::default();
         let root = comrak::parse_document(&arena, &self.content, &options);
-        let mut text = String::new();
 
-        fn collect_text<'a>(node: &'a comrak::nodes::AstNode<'a>, text: &mut String) {
-            match &node.data.borrow().value {
-                NodeValue::Text(content) => {
-                    text.push_str(content);
-                    text.push(' ');
+        let mut extractor = PlainTextExtractor::new();
+        extractor.extract_from_node(root);
+        extractor.text.trim().to_string()
+    }
+}
+
+/// Helper struct for extracting titles from markdown AST.
+struct TitleExtractor;
+
+impl TitleExtractor {
+    fn find_h1_title<'a>(node: &'a comrak::nodes::AstNode<'a>) -> Option<String> {
+        match &node.data.borrow().value {
+            NodeValue::Heading(heading) if heading.level == 1 => {
+                let mut title = String::new();
+                Self::collect_heading_text(node, &mut title);
+
+                if !title.trim().is_empty() {
+                    Some(title.trim().to_string())
+                } else {
+                    None
                 }
-                _ => {
-                    for child in node.children() {
-                        collect_text(child, text);
+            }
+            _ => {
+                for child in node.children() {
+                    if let Some(title) = Self::find_h1_title(child) {
+                        return Some(title);
                     }
+                }
+                None
+            }
+        }
+    }
+
+    fn collect_heading_text<'a>(node: &'a comrak::nodes::AstNode<'a>, title: &mut String) {
+        match &node.data.borrow().value {
+            NodeValue::Text(text) => title.push_str(text),
+            _ => {
+                for child in node.children() {
+                    Self::collect_heading_text(child, title);
                 }
             }
         }
+    }
+}
 
-        collect_text(root, &mut text);
-        text.trim().to_string()
+/// Helper struct for extracting image references from markdown AST.
+struct ImageExtractor {
+    images: Vec<ImageRef>,
+    source_content: String,
+}
+
+impl ImageExtractor {
+    fn new(source_content: &str) -> Self {
+        Self {
+            images: Vec::new(),
+            source_content: source_content.to_string(),
+        }
+    }
+
+    fn extract_from_node<'a>(&mut self, node: &'a comrak::nodes::AstNode<'a>) {
+        match &node.data.borrow().value {
+            NodeValue::Image(link) => {
+                let mut alt_text = String::new();
+                Self::collect_alt_text(node, &mut alt_text);
+
+                let url = link.url.clone();
+
+                // Calculate approximate position based on content search
+                let position = if let Some(start) =
+                    self.source_content.find(&format!("![{alt_text}]({url})"))
+                {
+                    let end = start + format!("![{alt_text}]({url})").len();
+                    (start, end)
+                } else {
+                    (0, 0) // Fallback if exact match not found
+                };
+
+                let image_ref = ImageRef::new(alt_text, url, position);
+                self.images.push(image_ref);
+            }
+            _ => {
+                for child in node.children() {
+                    self.extract_from_node(child);
+                }
+            }
+        }
+    }
+
+    fn collect_alt_text<'a>(node: &'a comrak::nodes::AstNode<'a>, alt: &mut String) {
+        match &node.data.borrow().value {
+            NodeValue::Text(text) => alt.push_str(text),
+            NodeValue::Code(code) => alt.push_str(&code.literal),
+            _ => {
+                for child in node.children() {
+                    Self::collect_alt_text(child, alt);
+                }
+            }
+        }
     }
 }
 
@@ -290,107 +419,17 @@ impl MarkdownParser {
         let arena = Arena::new();
         let root = comrak::parse_document(&arena, content, &self.options);
 
-        fn find_h1_title<'a>(node: &'a comrak::nodes::AstNode<'a>) -> Option<String> {
-            match &node.data.borrow().value {
-                NodeValue::Heading(heading) if heading.level == 1 => {
-                    let mut title = String::new();
-                    fn collect_heading_text<'a>(
-                        node: &'a comrak::nodes::AstNode<'a>,
-                        title: &mut String,
-                    ) {
-                        match &node.data.borrow().value {
-                            NodeValue::Text(text) => title.push_str(text),
-                            _ => {
-                                for child in node.children() {
-                                    collect_heading_text(child, title);
-                                }
-                            }
-                        }
-                    }
-
-                    for child in node.children() {
-                        collect_heading_text(child, &mut title);
-                    }
-
-                    if !title.trim().is_empty() {
-                        Some(title.trim().to_string())
-                    } else {
-                        None
-                    }
-                }
-                _ => {
-                    for child in node.children() {
-                        if let Some(title) = find_h1_title(child) {
-                            return Some(title);
-                        }
-                    }
-                    None
-                }
-            }
-        }
-
-        find_h1_title(root)
+        TitleExtractor::find_h1_title(root)
     }
 
     /// Extracts image references from markdown content.
     fn extract_images(&self, content: &str) -> Result<Vec<ImageRef>> {
         let arena = Arena::new();
         let root = comrak::parse_document(&arena, content, &self.options);
-        let mut images = Vec::new();
 
-        fn extract_images_recursive<'a>(
-            node: &'a comrak::nodes::AstNode<'a>,
-            images: &mut Vec<ImageRef>,
-            source: &str,
-        ) {
-            match &node.data.borrow().value {
-                NodeValue::Image(link) => {
-                    let mut alt_text = String::new();
-
-                    // Collect alt text from children
-                    fn collect_alt_text<'a>(
-                        node: &'a comrak::nodes::AstNode<'a>,
-                        alt: &mut String,
-                    ) {
-                        match &node.data.borrow().value {
-                            NodeValue::Text(text) => alt.push_str(text),
-                            NodeValue::Code(code) => alt.push_str(&code.literal),
-                            _ => {
-                                for child in node.children() {
-                                    collect_alt_text(child, alt);
-                                }
-                            }
-                        }
-                    }
-
-                    for child in node.children() {
-                        collect_alt_text(child, &mut alt_text);
-                    }
-
-                    let url = link.url.clone();
-
-                    // Calculate approximate position based on content search
-                    let position =
-                        if let Some(start) = source.find(&format!("![{alt_text}]({url})")) {
-                            let end = start + format!("![{alt_text}]({url})").len();
-                            (start, end)
-                        } else {
-                            (0, 0) // Fallback if exact match not found
-                        };
-
-                    let image_ref = ImageRef::new(alt_text, url, position);
-                    images.push(image_ref);
-                }
-                _ => {
-                    for child in node.children() {
-                        extract_images_recursive(child, images, source);
-                    }
-                }
-            }
-        }
-
-        extract_images_recursive(root, &mut images, content);
-        Ok(images)
+        let mut extractor = ImageExtractor::new(content);
+        extractor.extract_from_node(root);
+        Ok(extractor.images)
     }
 }
 

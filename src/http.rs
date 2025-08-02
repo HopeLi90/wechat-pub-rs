@@ -1,7 +1,7 @@
 //! HTTP client module with retry mechanisms and WeChat API integration.
 
 use crate::error::{Result, WeChatError};
-use reqwest::{multipart, Client, Response};
+use reqwest::{Client, Response, multipart};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -238,6 +238,50 @@ impl WeChatHttpClient {
 
         let bytes = response.bytes().await?;
         Ok(bytes.to_vec())
+    }
+
+    /// Downloads content from a URL with size limits and streaming.
+    pub async fn download_with_limit(&self, url: &str, max_size: u64) -> Result<Vec<u8>> {
+        use futures::StreamExt;
+
+        let response = self
+            .execute_with_retry(|| self.client.get(url).send())
+            .await?;
+
+        // Check content length if available
+        if let Some(content_length) = response.content_length() {
+            if content_length > max_size {
+                return Err(WeChatError::ImageUpload {
+                    path: url.to_string(),
+                    reason: format!(
+                        "Content too large: {content_length} bytes (max: {max_size} bytes)"
+                    ),
+                });
+            }
+        }
+
+        let mut downloaded_size = 0u64;
+        let mut data = Vec::new();
+        let mut stream = response.bytes_stream();
+
+        while let Some(chunk_result) = stream.next().await {
+            let chunk = chunk_result?;
+            downloaded_size += chunk.len() as u64;
+
+            if downloaded_size > max_size {
+                return Err(WeChatError::ImageUpload {
+                    path: url.to_string(),
+                    reason: format!(
+                        "Content too large during download: {downloaded_size} bytes (max: {max_size} bytes)"
+                    ),
+                });
+            }
+
+            data.extend_from_slice(&chunk);
+        }
+
+        log::debug!("Downloaded {downloaded_size} bytes from {url}");
+        Ok(data)
     }
 }
 

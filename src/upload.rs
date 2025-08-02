@@ -18,6 +18,12 @@ use tokio::sync::Semaphore;
 /// Maximum concurrent image uploads to prevent overwhelming the server
 const MAX_CONCURRENT_UPLOADS: usize = 5;
 
+/// Maximum file size for images (10 MB)
+const MAX_IMAGE_SIZE: u64 = 10 * 1024 * 1024;
+
+/// Maximum file size for streaming downloads (50 MB)
+const MAX_DOWNLOAD_SIZE: u64 = 50 * 1024 * 1024;
+
 /// Represents the result of an image upload operation.
 #[derive(Debug, Clone)]
 pub struct UploadResult {
@@ -289,18 +295,42 @@ impl ImageUploader {
         })
     }
 
-    /// Loads image data from local file.
+    /// Loads image data from local file with size validation.
     async fn load_local_image(&self, path: &Path) -> Result<Vec<u8>> {
+        // Check file size before loading
+        let metadata = fs::metadata(path)
+            .await
+            .map_err(|e| WeChatError::ImageUpload {
+                path: path.display().to_string(),
+                reason: format!("Failed to get file metadata: {e}"),
+            })?;
+
+        let file_size = metadata.len();
+        if file_size > MAX_IMAGE_SIZE {
+            return Err(WeChatError::ImageUpload {
+                path: path.display().to_string(),
+                reason: format!("File too large: {file_size} bytes (max: {MAX_IMAGE_SIZE} bytes)"),
+            });
+        }
+
+        log::debug!(
+            "Loading local image: {} ({} bytes)",
+            path.display(),
+            file_size
+        );
+
         fs::read(path).await.map_err(|e| WeChatError::ImageUpload {
             path: path.display().to_string(),
             reason: format!("Failed to read local file: {e}"),
         })
     }
 
-    /// Downloads image data from remote URL.
+    /// Downloads image data from remote URL with size validation.
     async fn download_remote_image(&self, url: &str) -> Result<Vec<u8>> {
+        log::debug!("Downloading remote image: {url}");
+
         self.http_client
-            .download(url)
+            .download_with_limit(url, MAX_DOWNLOAD_SIZE)
             .await
             .map_err(|e| WeChatError::ImageUpload {
                 path: url.to_string(),
@@ -339,9 +369,9 @@ impl ImageUploader {
         "jpg".to_string()
     }
 
-    /// Searches for an existing image by its hash in recent materials.
-    async fn find_existing_image_by_hash(&self, hash_str: &str) -> Result<Option<String>> {
-        log::debug!("Checking for existing image with hash: {hash_str}");
+    /// Searches for an existing material by hash and returns both URL and media_id.
+    async fn find_material_by_hash(&self, hash_str: &str) -> Result<Option<(String, String)>> {
+        log::debug!("Checking for existing material with hash: {hash_str}");
 
         // Check the most recent 20 materials
         let access_token = self.token_manager.get_access_token().await?;
@@ -381,8 +411,13 @@ impl ImageUploader {
                     // Check if any material name starts with our hash
                     for item in material_list.item {
                         if item.name.starts_with(hash_str) {
-                            log::info!("Found existing image with hash {}: {}", hash_str, item.url);
-                            return Ok(Some(item.url));
+                            log::info!(
+                                "Found existing material with hash {}: URL {} (media_id: {})",
+                                hash_str,
+                                item.url,
+                                item.media_id
+                            );
+                            return Ok(Some((item.url, item.media_id)));
                         }
                     }
                 }
@@ -392,8 +427,15 @@ impl ImageUploader {
             }
         }
 
-        log::debug!("No existing image found with hash: {hash_str}");
+        log::debug!("No existing material found with hash: {hash_str}");
         Ok(None)
+    }
+
+    /// Searches for an existing image by its hash in recent materials.
+    async fn find_existing_image_by_hash(&self, hash_str: &str) -> Result<Option<String>> {
+        self.find_material_by_hash(hash_str)
+            .await
+            .map(|opt| opt.map(|(url, _)| url))
     }
 
     /// Uploads a cover image as permanent material.
@@ -412,16 +454,11 @@ impl ImageUploader {
         log::debug!("Cover image hash: {hash_str}");
 
         // Check if this image already exists by searching materials
-        if let Some(existing_url) = self.find_existing_image_by_hash(&hash_str).await? {
+        if let Some((_existing_url, media_id)) = self.find_material_by_hash(&hash_str).await? {
             log::info!(
-                "Cover image already exists with hash {hash_str}, reusing URL: {existing_url}"
+                "Cover image already exists with hash {hash_str}, reusing media_id: {media_id}"
             );
-
-            // Extract media_id from URL for existing materials
-            // For materials, we might need to search through material list to find the media_id
-            if let Some(media_id) = self.find_material_id_by_hash(&hash_str).await? {
-                return Ok(media_id);
-            }
+            return Ok(media_id);
         }
 
         // Use hash as filename with appropriate extension
@@ -447,67 +484,6 @@ impl ImageUploader {
         );
 
         Ok(material.media_id)
-    }
-
-    /// Finds the material ID for an existing image by its hash.
-    async fn find_material_id_by_hash(&self, hash_str: &str) -> Result<Option<String>> {
-        log::debug!("Checking for existing material with hash: {hash_str}");
-
-        // Check the most recent 20 materials
-        let access_token = self.token_manager.get_access_token().await?;
-
-        let request = serde_json::json!({
-            "type": "image",
-            "offset": 0,
-            "count": 20
-        });
-
-        let response = self
-            .http_client
-            .post_json_with_token(
-                "/cgi-bin/material/batchget_material",
-                &access_token,
-                &request,
-            )
-            .await
-            .map_err(|e| {
-                log::warn!("Failed to list materials for media_id lookup: {e}");
-                e
-            });
-
-        // If we can't list materials, just proceed with upload
-        let response = match response {
-            Ok(resp) => resp,
-            Err(_) => return Ok(None),
-        };
-
-        let materials_result = response
-            .json::<WeChatResponse<MaterialListResponse>>()
-            .await;
-
-        match materials_result {
-            Ok(materials_response) => {
-                if let Ok(material_list) = materials_response.into_result() {
-                    // Check if any material name starts with our hash
-                    for item in material_list.item {
-                        if item.name.starts_with(hash_str) {
-                            log::info!(
-                                "Found existing material with hash {}: media_id {}",
-                                hash_str,
-                                item.media_id
-                            );
-                            return Ok(Some(item.media_id));
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                log::warn!("Failed to parse material list response for media_id lookup: {e}");
-            }
-        }
-
-        log::debug!("No existing material found with hash: {hash_str}");
-        Ok(None)
     }
 }
 
