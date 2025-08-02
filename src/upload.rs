@@ -340,8 +340,8 @@ impl ImageUploader {
     }
 
     /// Searches for an existing image by its hash in recent materials.
-    async fn find_existing_image_by_hash(&self, hash: &str) -> Result<Option<String>> {
-        log::debug!("Checking for existing image with hash: {hash}");
+    async fn find_existing_image_by_hash(&self, hash_str: &str) -> Result<Option<String>> {
+        log::debug!("Checking for existing image with hash: {hash_str}");
 
         // Check the most recent 20 materials
         let access_token = self.token_manager.get_access_token().await?;
@@ -380,8 +380,8 @@ impl ImageUploader {
                 if let Ok(material_list) = materials_response.into_result() {
                     // Check if any material name starts with our hash
                     for item in material_list.item {
-                        if item.name.starts_with(hash) {
-                            log::info!("Found existing image with hash {}: {}", hash, item.url);
+                        if item.name.starts_with(hash_str) {
+                            log::info!("Found existing image with hash {}: {}", hash_str, item.url);
                             return Ok(Some(item.url));
                         }
                     }
@@ -392,7 +392,7 @@ impl ImageUploader {
             }
         }
 
-        log::debug!("No existing image found with hash: {hash}");
+        log::debug!("No existing image found with hash: {hash_str}");
         Ok(None)
     }
 
@@ -406,16 +406,30 @@ impl ImageUploader {
         // Load image data
         let image_data = self.load_local_image(cover_path).await?;
 
-        // Calculate BLAKE3 hash for the cover image
+        // Calculate BLAKE3 hash of the image content
         let hash = blake3::hash(&image_data);
         let hash_str = hash.to_hex().to_string();
+        log::debug!("Cover image hash: {hash_str}");
+
+        // Check if this image already exists by searching materials
+        if let Some(existing_url) = self.find_existing_image_by_hash(&hash_str).await? {
+            log::info!(
+                "Cover image already exists with hash {hash_str}, reusing URL: {existing_url}"
+            );
+
+            // Extract media_id from URL for existing materials
+            // For materials, we might need to search through material list to find the media_id
+            if let Some(media_id) = self.find_material_id_by_hash(&hash_str).await? {
+                return Ok(media_id);
+            }
+        }
 
         // Use hash as filename with appropriate extension
         let extension = self.get_image_extension(&cover_path.to_string_lossy(), &image_data);
         let filename = format!("{hash_str}.{extension}");
-        log::debug!("Uploading cover image with hash: {hash_str}");
+        log::debug!("Uploading new cover image with filename: {filename}");
 
-        // Upload as permanent material
+        // Upload as permanent material (different API endpoint than regular images)
         let access_token = self.token_manager.get_access_token().await?;
         let response = self
             .http_client
@@ -433,6 +447,67 @@ impl ImageUploader {
         );
 
         Ok(material.media_id)
+    }
+
+    /// Finds the material ID for an existing image by its hash.
+    async fn find_material_id_by_hash(&self, hash_str: &str) -> Result<Option<String>> {
+        log::debug!("Checking for existing material with hash: {hash_str}");
+
+        // Check the most recent 20 materials
+        let access_token = self.token_manager.get_access_token().await?;
+
+        let request = serde_json::json!({
+            "type": "image",
+            "offset": 0,
+            "count": 20
+        });
+
+        let response = self
+            .http_client
+            .post_json_with_token(
+                "/cgi-bin/material/batchget_material",
+                &access_token,
+                &request,
+            )
+            .await
+            .map_err(|e| {
+                log::warn!("Failed to list materials for media_id lookup: {e}");
+                e
+            });
+
+        // If we can't list materials, just proceed with upload
+        let response = match response {
+            Ok(resp) => resp,
+            Err(_) => return Ok(None),
+        };
+
+        let materials_result = response
+            .json::<WeChatResponse<MaterialListResponse>>()
+            .await;
+
+        match materials_result {
+            Ok(materials_response) => {
+                if let Ok(material_list) = materials_response.into_result() {
+                    // Check if any material name starts with our hash
+                    for item in material_list.item {
+                        if item.name.starts_with(hash_str) {
+                            log::info!(
+                                "Found existing material with hash {}: media_id {}",
+                                hash_str,
+                                item.media_id
+                            );
+                            return Ok(Some(item.media_id));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to parse material list response for media_id lookup: {e}");
+            }
+        }
+
+        log::debug!("No existing material found with hash: {hash_str}");
+        Ok(None)
     }
 }
 
