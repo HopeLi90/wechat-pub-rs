@@ -38,7 +38,7 @@ pulldown-cmark = "0.13"
 pulldown-cmark-to-cmark = "21.0"
 
 # Template engine
-tera = "1.20"
+askama = "0.14"
 
 # Async utilities
 tokio-util = "0.7"
@@ -58,6 +58,11 @@ uuid = { version = "1.0", features = ["v4"] }
 # URL manipulation
 url = "2.5"
 blake3 = "1.8.2"
+
+# HTML and CSS manipulation
+scraper = "0.23"
+regex = "1.5"
+css-inline = "0.17.0"
 
 [dev-dependencies]
 tokio-test = "0.4"

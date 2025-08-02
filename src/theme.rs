@@ -1,6 +1,7 @@
 //! Theme system for rendering markdown content to HTML.
 
 use crate::error::{Result, WeChatError};
+use askama::Template;
 use pulldown_cmark::{html, Options, Parser};
 use std::collections::HashMap;
 use std::path::Path;
@@ -76,53 +77,53 @@ impl std::str::FromStr for BuiltinTheme {
     }
 }
 
-/// Theme template containing CSS and HTML structure.
+/// Askama template for rendering articles with themes.
+#[derive(Template)]
+#[template(path = "article.html")]
+pub struct ArticleTemplate {
+    pub title: String,
+    pub description: String,
+    pub author: String,
+    pub content: String,
+    pub theme_css: String,
+}
+
+/// Theme template containing CSS for styling.
 #[derive(Debug, Clone)]
 pub struct ThemeTemplate {
     /// CSS styles for the theme
     pub css: String,
-    /// HTML template (uses basic string replacement)
-    pub html_template: String,
-    /// Code highlighting theme
-    pub code_theme: String,
+    /// Theme name
+    pub name: String,
 }
 
 impl ThemeTemplate {
     /// Creates a new theme template.
-    pub fn new(css: String, html_template: String, code_theme: String) -> Self {
-        Self {
-            css,
-            html_template,
-            code_theme,
-        }
+    pub fn new(css: String, name: String) -> Self {
+        Self { css, name }
     }
 
-    /// Renders content using this theme.
+    /// Renders content using this theme with inline styles for WeChat.
     pub fn render(&self, content: &str, metadata: &HashMap<String, String>) -> Result<String> {
-        // Replace placeholders in template
-        let mut html = self.html_template.clone();
+        // Create Askama template with the provided content and metadata
+        let template = ArticleTemplate {
+            title: metadata.get("title").cloned().unwrap_or_default(),
+            description: metadata.get("description").cloned().unwrap_or_default(),
+            author: metadata.get("author").cloned().unwrap_or_default(),
+            content: content.to_string(),
+            theme_css: self.css.clone(),
+        };
 
-        // Replace basic placeholders
-        html = html.replace("{{CSS}}", &self.css);
-        html = html.replace("{{CONTENT}}", content);
+        // Render the template to HTML
+        let html_with_css = template.render().map_err(|e| {
+            WeChatError::Internal(anyhow::anyhow!("Template rendering failed: {}", e))
+        })?;
 
-        // Replace metadata placeholders
-        for (key, value) in metadata {
-            let placeholder = format!("{{{{{}}}}}", key.to_uppercase());
-            html = html.replace(&placeholder, value);
-        }
+        // Use css-inline to convert CSS to inline styles
+        let inlined_html = css_inline::inline(&html_with_css)
+            .map_err(|e| WeChatError::Internal(anyhow::anyhow!("CSS inlining failed: {}", e)))?;
 
-        // Set default values for common placeholders
-        html = html.replace(
-            "{{TITLE}}",
-            metadata.get("title").unwrap_or(&"Untitled".to_string()),
-        );
-        html = html.replace(
-            "{{AUTHOR}}",
-            metadata.get("author").unwrap_or(&"Anonymous".to_string()),
-        );
-
-        Ok(html)
+        Ok(inlined_html)
     }
 }
 
@@ -173,154 +174,27 @@ impl ThemeManager {
             )
         })?;
 
-        let html_template = self.get_default_html_template();
-        let template = ThemeTemplate::new(css, html_template, theme_name.to_string());
+        let template = ThemeTemplate::new(css, theme_name.to_string());
         self.templates.insert(theme_name.to_string(), template);
         Ok(())
     }
 
-    /// Gets the default HTML template.
-    fn get_default_html_template(&self) -> String {
-        r#"<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{TITLE}}</title>
-    <style>
-        {{CSS}}
-    </style>
-</head>
-<body>
-    <section id="wenyan">
-        {{CONTENT}}
-    </section>
-</body>
-</html>"#
-            .to_string()
-    }
-
     /// Creates a built-in theme template.
     fn create_builtin_theme(&self, theme: BuiltinTheme) -> ThemeTemplate {
-        // For now, return a basic template. In production, these would load from CSS files.
-        let css = self.get_theme_css(theme);
-        let html_template = self.get_default_html_template();
-        ThemeTemplate::new(css, html_template, theme.as_str().to_string())
+        let css = self.load_builtin_theme_css(theme);
+        ThemeTemplate::new(css, theme.as_str().to_string())
     }
 
-    /// Gets theme CSS content.
-    fn get_theme_css(&self, theme: BuiltinTheme) -> String {
-        // This is a placeholder. In production, load from actual CSS files.
-        match theme {
-            BuiltinTheme::Default => self.get_default_css(),
-            _ => self.get_default_css(), // For now, use default for all themes
+    /// Loads CSS content for built-in themes from the themes directory.
+    fn load_builtin_theme_css(&self, theme: BuiltinTheme) -> String {
+        let theme_path = format!("themes/{}.css", theme.as_str());
+
+        if Path::new(&theme_path).exists() {
+            std::fs::read_to_string(&theme_path).unwrap()
+        } else {
+            log::warn!("Could not load theme file: {theme_path}, using default CSS");
+            std::fs::read_to_string("themes/default.css").unwrap()
         }
-    }
-
-    /// Gets default theme CSS.
-    fn get_default_css(&self) -> String {
-        r#"
-#wenyan {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    line-height: 1.75;
-    font-size: 16px;
-    color: #333;
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-}
-
-#wenyan h1, #wenyan h2, #wenyan h3, #wenyan h4, #wenyan h5, #wenyan h6 {
-    color: #2c3e50;
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-}
-
-#wenyan h1 {
-    font-size: 1.5em;
-    text-align: center;
-    border-bottom: 2px solid #3498db;
-    padding-bottom: 0.3em;
-}
-
-#wenyan h2 {
-    font-size: 1.3em;
-    border-bottom: 1px solid #bdc3c7;
-    padding-bottom: 0.2em;
-}
-
-#wenyan p {
-    margin-bottom: 1em;
-    text-align: justify;
-}
-
-#wenyan img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    margin: 1em 0;
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-#wenyan code {
-    background-color: #f8f9fa;
-    padding: 0.2em 0.4em;
-    border-radius: 3px;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-    font-size: 0.9em;
-}
-
-#wenyan pre {
-    background-color: #f8f9fa;
-    padding: 1em;
-    border-radius: 5px;
-    overflow-x: auto;
-    border-left: 4px solid #3498db;
-}
-
-#wenyan pre code {
-    background-color: transparent;
-    padding: 0;
-}
-
-#wenyan blockquote {
-    border-left: 4px solid #3498db;
-    margin: 1em 0;
-    padding-left: 1em;
-    color: #7f8c8d;
-    font-style: italic;
-}
-
-#wenyan table {
-    border-collapse: collapse;
-    width: 100%;
-    margin: 1em 0;
-}
-
-#wenyan th, #wenyan td {
-    border: 1px solid #ddd;
-    padding: 0.5em;
-    text-align: left;
-}
-
-#wenyan th {
-    background-color: #f8f9fa;
-    font-weight: bold;
-}
-
-#wenyan ul, #wenyan ol {
-    padding-left: 2em;
-    margin: 1em 0;
-}
-
-#wenyan li {
-    margin: 0.3em 0;
-}
-"#
-        .to_string()
     }
 
     /// Renders markdown content with the specified theme.
@@ -433,9 +307,12 @@ mod tests {
         assert!(result.is_ok());
 
         let html = result.unwrap();
-        assert!(html.contains("<h1>Test Title</h1>"));
-        assert!(html.contains("<strong>bold</strong>"));
-        assert!(html.contains("Test Article"));
+        assert!(html.contains("<h1"));
+        assert!(html.contains("Test Title"));
+        assert!(html.contains("<strong"));
+        assert!(html.contains("bold"));
+        assert!(html.contains("id=\"wenyan\""));
+        assert!(html.contains("data-provider=\"WenYan\""));
     }
 
     #[test]
@@ -455,11 +332,8 @@ mod tests {
     fn test_custom_theme() {
         let mut manager = ThemeManager::new();
 
-        let custom_template = ThemeTemplate::new(
-            "body { color: red; }".to_string(),
-            "<html><head><style>{{CSS}}</style></head><body>{{CONTENT}}</body></html>".to_string(),
-            "custom".to_string(),
-        );
+        let custom_template =
+            ThemeTemplate::new("#wepub { color: red; }".to_string(), "custom".to_string());
 
         manager.add_theme("custom".to_string(), custom_template);
         assert!(manager.has_theme("custom"));
@@ -468,17 +342,15 @@ mod tests {
         assert!(result.is_ok());
 
         let html = result.unwrap();
-        assert!(html.contains("color: red"));
-        assert!(html.contains("<h1>Test</h1>"));
+        assert!(html.contains("style="));
+        assert!(html.contains("Test"));
+        assert!(html.contains("id=\"wenyan\""));
     }
 
     #[test]
-    fn test_template_placeholder_replacement() {
-        let template = ThemeTemplate::new(
-            "/* CSS */".to_string(),
-            "<!DOCTYPE html><html><head><title>{{TITLE}}</title></head><body>{{CONTENT}}<div>{{AUTHOR}}</div></body></html>".to_string(),
-            "theme".to_string(),
-        );
+    fn test_template_css_inlining() {
+        let css = "#wepub h1 { color: red; font-size: 2em; }";
+        let template = ThemeTemplate::new(css.to_string(), "theme".to_string());
 
         let mut metadata = HashMap::new();
         metadata.insert("title".to_string(), "My Title".to_string());
@@ -488,8 +360,11 @@ mod tests {
         assert!(result.is_ok());
 
         let html = result.unwrap();
-        assert!(html.contains("<title>My Title</title>"));
-        assert!(html.contains("<h1>Content</h1>"));
-        assert!(html.contains("<div>John Doe</div>"));
+        assert!(html.contains("id=\"wenyan\""));
+        assert!(html.contains("data-provider=\"WenYan\""));
+        assert!(html.contains("<h1"));
+        assert!(html.contains("Content"));
+        // Check that CSS was applied as inline styles
+        assert!(html.contains("style="));
     }
 }

@@ -12,31 +12,36 @@
     --code-bg-color: rgb(247, 247, 247);
     --block-shadow: 0.15em 0.15em 0.5em rgb(150, 150, 150);
 }
-#wenyan {
+
+#wepub {
     font-family: var(--sans-serif-font);
     line-height: 1.75;
     font-size: 16px;
 }
-#wenyan p,
-#wenyan pre {
+
+#wepub p,
+#wepub pre {
     margin: 1em 0.8em;
 }
-#wenyan h1,
-#wenyan h2,
-#wenyan h3,
-#wenyan h4,
-#wenyan h5,
-#wenyan h6 {
+
+#wepub h1,
+#wepub h2,
+#wepub h3,
+#wepub h4,
+#wepub h5,
+#wepub h6 {
     margin: 1.2em 0 1em;
     padding: 0px;
     font-weight: bold;
 }
-#wenyan h1 {
+
+#wepub h1 {
     font-size: 1.5em;
     text-align: center;
     text-shadow: 0.15em 0.15em 0.3em rgb(187, 187, 187);
 }
-#wenyan h2 {
+
+#wepub h2 {
     font-size: 1.3em;
     background-color: var(--h-bg-color);
     padding-left: 1em;
@@ -44,19 +49,22 @@
     border-left: 0.5em solid var(--h-border-color);
     border-radius: 0.4em;
 }
-#wenyan h3 {
+
+#wepub h3 {
     font-size: 1.3em;
     text-decoration: underline double var(--h-border-color);
     -webkit-text-decoration: underline double var(--h-border-color);
     text-decoration-thickness: 0.15em;
 }
-#wenyan h4 {
+
+#wepub h4 {
     font-size: 1.2em;
     text-decoration: underline dotted var(--h-border-color);
     -webkit-text-decoration: underline dotted var(--h-border-color);
     text-decoration-thickness: 0.2em;
 }
-#wenyan table {
+
+#wepub table {
     border-collapse: collapse;
     border: 0.25em solid var(--table-border-color);
     margin: 1.4em auto;
@@ -68,11 +76,13 @@
     word-wrap: break-word;
     word-break: break-all;
 }
-#wenyan table th {
+
+#wepub table th {
     background-color: var(--th-bg-color);
 }
-#wenyan table th,
-#wenyan table td {
+
+#wepub table th,
+#wepub table td {
     font-size: 0.75em;
     text-align: center;
     border: 0.13em dashed var(--table-border-color);
@@ -81,47 +91,55 @@
     line-height: 22px;
     vertical-align: top;
 }
-#wenyan table tr:nth-child(even) {
+
+#wepub table tr:nth-child(even) {
     background-color: var(--tr-bg-color);
 }
-#wenyan blockquote {
+
+#wepub blockquote {
     font-size: 0.9em;
     margin: 0 1em;
     color: rgb(102, 102, 102);
     border-left: 0.25em solid rgb(169, 202, 255);
     padding: 0.5em 1em 0.6em 1em;
 }
-#wenyan blockquote::before {
+
+#wepub blockquote::before {
     display: block;
     height: 2em;
     width: 1.5em;
     content: "🌈";
     font-size: 1.2em;
 }
-#wenyan blockquote p {
+
+#wepub blockquote p {
     margin: 0;
 }
-#wenyan hr {
+
+#wepub hr {
     margin-top: 2em;
     margin-bottom: 2em;
     background-color: rgb(226, 226, 226);
     height: 0.13em;
     border: 0;
 }
-#wenyan pre {
+
+#wepub pre {
     line-height: 2;
     padding: .5em;
     border-radius: 0.4em;
     box-shadow: var(--block-shadow);
 }
-#wenyan pre code {
+
+#wepub pre code {
     display: block;
     overflow-x: auto;
     margin: .5em;
     padding: 0;
     font-family: var(--monospace-font);
 }
-#wenyan p code {
+
+#wepub p code {
     font-family: var(--monospace-font);
     margin-left: 0.25em;
     margin-right: 0.25em;
@@ -131,11 +149,13 @@
     box-shadow: 0.13em 0.13em 0.26em rgb(197, 197, 197);
     font-size: 0.9em;
 }
-#wenyan a {
+
+#wepub a {
     word-wrap: break-word;
     color: rgb(31, 117, 255);
 }
-#wenyan img {
+
+#wepub img {
     max-width: 100%;
     height: auto;
     margin: 0 auto;
@@ -143,19 +163,23 @@
     border-radius: 5px;
     box-shadow: var(--block-shadow);
 }
-#wenyan .footnote {
+
+#wepub .footnote {
     color: rgb(31, 117, 255);
 }
-#wenyan #footnotes p {
+
+#wepub #footnotes p {
     display: flex;
     margin: 0;
     font-size: 0.9em;
 }
-#wenyan .footnote-num {
+
+#wepub .footnote-num {
     display: inline;
     width: 10%;
 }
-#wenyan .footnote-txt {
+
+#wepub .footnote-txt {
     display: inline;
     width: 90%;
     word-wrap: break-word;

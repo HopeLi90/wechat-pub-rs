@@ -8,29 +8,34 @@
     --text-color: #333333;
     --primary-color: #428bca;
 }
-#wenyan {
+
+#wepub {
     font-family: var(--sans-serif-font);
     line-height: 1.75;
     font-size: 16px;
 }
-#wenyan p,
-#wenyan pre {
+
+#wepub p,
+#wepub pre {
     margin: 1em 0;
 }
-#wenyan h1,
-#wenyan h2,
-#wenyan h3,
-#wenyan h4,
-#wenyan h5,
-#wenyan h6 {
+
+#wepub h1,
+#wepub h2,
+#wepub h3,
+#wepub h4,
+#wepub h5,
+#wepub h6 {
     margin: 1.2em 0 1em;
     padding: 0px;
     font-weight: bold;
 }
-#wenyan h1 {
+
+#wepub h1 {
     font-size: 1.5em;
 }
-#wenyan h2::before {
+
+#wepub h2::before {
     content: "";
     width: 20px;
     height: 30px;
@@ -40,49 +45,61 @@
     margin-right: 4px;
     background-position-y: 10px;
 }
-#wenyan h2 {
+
+#wepub h2 {
     font-size: 1.3em;
     display: flex;
     align-items: top;
 }
-#wenyan h2 span {
+
+#wepub h2 span {
     font-weight: bold;
     color: #333;
     padding: 3px 10px 1px;
 }
-#wenyan h3 {
+
+#wepub h3 {
     font-size: 1.3em;
 }
-#wenyan h4 {
+
+#wepub h4 {
     font-size: 1.2em;
 }
-#wenyan h5 {
+
+#wepub h5 {
     font-size: 1.2em;
 }
-#wenyan h6 {
+
+#wepub h6 {
     font-size: 1.2em;
 }
-#wenyan ul,
-#wenyan ol {
+
+#wepub ul,
+#wepub ol {
     margin-top: 8px;
     margin-bottom: 8px;
     padding-left: 40px;
     color: black;
 }
-#wenyan ul {
+
+#wepub ul {
     list-style-type: disc;
 }
-#wenyan ul ul {
+
+#wepub ul ul {
     list-style-type: square;
 }
-#wenyan ol {
+
+#wepub ol {
     list-style-type: decimal;
 }
-#wenyan strong {
+
+#wepub strong {
     color: #e49123;
     font-weight: bold;
 }
-#wenyan blockquote {
+
+#wepub blockquote {
     margin: 0;
     padding: 10px 10px 10px 20px;
     font-size: 0.9em;
@@ -91,23 +108,26 @@
     color: #6a737d;
     overflow: auto;
 }
-#wenyan a {
+
+#wepub a {
     word-wrap: break-word;
     text-decoration: none;
     font-weight: bold;
     color: #e49123;
     border-bottom: 1px solid #e49123;
 }
-#wenyan hr {
+
+#wepub hr {
     height: 1px;
     padding: 0;
     border: none;
     text-align: center;
     background-image: linear-gradient(to right, rgba(231, 93, 109, 0.3), rgba(255, 159, 150, 0.75), rgba(255, 216, 181, 0.3));
 }
-#wenyan p code,
-#wenyan span code,
-#wenyan li code {
+
+#wepub p code,
+#wepub span code,
+#wepub li code {
     font-family: var(--monospace-font);
     word-wrap: break-word;
     padding: 2px 4px;
@@ -118,7 +138,8 @@
     background-color: #f0f0f0;
     font-size: .8em;
 }
-#wenyan img {
+
+#wepub img {
     max-width: 100%;
     display: block;
     margin: 0 auto;
@@ -127,7 +148,8 @@
     box-shadow: 0px 4px 12px #84a1a8;
     border: 0px;
 }
-#wenyan table {
+
+#wepub table {
     border-collapse: collapse;
     margin: 1.4em auto;
     max-width: 100%;
@@ -138,8 +160,9 @@
     word-wrap: break-word;
     word-break: break-all;
 }
-#wenyan table td,
-#wenyan table th {
+
+#wepub table td,
+#wepub table th {
     font-size: 0.75em;
     padding: 9px 12px;
     line-height: 22px;
@@ -147,42 +170,50 @@
     border: 1px solid rgb(255, 216, 181);
     vertical-align: top;
 }
-#wenyan table th {
+
+#wepub table th {
     font-weight: bold;
     color: #ffb11b;
     background: #fff9f9;
 }
-#wenyan table tr:nth-child(2n) {
+
+#wepub table tr:nth-child(2n) {
     background: #fff9f9;
 }
-#wenyan pre {
+
+#wepub pre {
     border-radius: 5px;
     line-height: 2;
     margin: 1em 0.5em;
     padding: .5em;
     box-shadow: rgba(0, 0, 0, 0.55) 0px 1px 5px;
 }
-#wenyan pre code {
+
+#wepub pre code {
     display: block;
     overflow-x: auto;
     margin: .5em;
     padding: 0;
     font-family: var(--monospace-font);
 }
-#wenyan .footnote {
+
+#wepub .footnote {
     font-weight: bold;
     color: #e49123;
 }
-#wenyan #footnotes p {
+
+#wepub #footnotes p {
     display: flex;
     margin: 0;
     font-size: 0.9em;
 }
-#wenyan .footnote-num {
+
+#wepub .footnote-num {
     display: inline;
     width: 10%;
 }
-#wenyan .footnote-txt {
+
+#wepub .footnote-txt {
     display: inline;
     width: 90%;
     word-wrap: break-word;

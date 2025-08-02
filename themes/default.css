@@ -3,80 +3,88 @@
  * https://babyno.top/posts/2024/11/wenyan-supports-customized-themes/
  */
 /* 全局属性 */
-#wenyan {
+#wepub {
     font-family: var(--sans-serif-font);
     line-height: 1.75;
     font-size: 16px;
 }
+
 /* 全局子元素属性 */
 /* 支持分组 */
-#wenyan h1,
-#wenyan h2,
-#wenyan h3,
-#wenyan h4,
-#wenyan h5,
-#wenyan h6,
-#wenyan p,
-#wenyan pre {
+#wepub h1,
+#wepub h2,
+#wepub h3,
+#wepub h4,
+#wepub h5,
+#wepub h6,
+#wepub p,
+#wepub pre {
     margin: 1em 0;
 }
+
 /* 段落 */
-#wenyan p {
-}
+#wepub p {}
+
 /* 加粗 */
-#wenyan p strong {
-}
+#wepub p strong {}
+
 /* 斜体 */
-#wenyan p em {
-}
+#wepub p em {}
+
 /* 一级标题 */
-#wenyan h1 {
+#wepub h1 {
     text-align: center;
     text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
     font-size: 1.5em;
 }
+
 /* 标题文字 */
-#wenyan h1 span {
-}
+#wepub h1 span {}
+
 /* 标题前缀，h1-h6都支持前缀 */
-#wenyan h1::before {
-}
+#wepub h1::before {}
+
 /* 标题后缀，h1-h6都支持后缀 */
-#wenyan h1::after {
-}
+#wepub h1::after {}
+
 /* 二级标题 */
-#wenyan h2 {
+#wepub h2 {
     text-align: center;
     font-size: 1.2em;
     border-bottom: 1px solid #f7f7f7;
     font-weight: bold;
 }
+
 /* 三-六级标题 */
-#wenyan h3,
-#wenyan h4,
-#wenyan h5,
-#wenyan h6 {
+#wepub h3,
+#wepub h4,
+#wepub h5,
+#wepub h6 {
     font-size: 1em;
     font-weight: bold;
 }
+
 /* 列表 */
-#wenyan ul,
-#wenyan ol {
+#wepub ul,
+#wepub ol {
     padding-left: 1.2em;
 }
+
 /* 列表元素 */
-#wenyan li {
+#wepub li {
     margin-left: 1.2em;
 }
+
 /* 图片 */
-#wenyan img {
+#wepub img {
     max-width: 100%;
     height: auto;
     margin: 0 auto;
     display: block;
 }
+
 /* 表格 */
-#wenyan table {
+#wepub table {
     border-collapse: collapse;
     margin: 1.4em auto;
     max-width: 100%;
@@ -87,9 +95,10 @@
     word-wrap: break-word;
     word-break: break-all;
 }
+
 /* 表格单元格 */
-#wenyan table td,
-#wenyan table th {
+#wepub table td,
+#wepub table th {
     font-size: 0.75em;
     padding: 9px 12px;
     line-height: 22px;
@@ -97,17 +106,20 @@
     border: 1px solid #d8d8d8;
     vertical-align: top;
 }
+
 /* 表格表头 */
-#wenyan table th {
+#wepub table th {
     font-weight: bold;
     background-color: #f0f0f0;
 }
+
 /* 表格斑马条纹效果 */
-#wenyan table tr:nth-child(2n) {
+#wepub table tr:nth-child(2n) {
     background-color: #f8f8f8;
 }
+
 /* 引用块 */
-#wenyan blockquote {
+#wepub blockquote {
     background: #afb8c133;
     border-left: 0.5em solid #ccc;
     margin: 1.5em 0;
@@ -115,64 +127,73 @@
     font-style: italic;
     font-size: 0.9em;
 }
+
 /* 引用块前缀 */
-#wenyan blockquote::before {
-}
+#wepub blockquote::before {}
+
 /* 引用块后缀 */
-#wenyan blockquote::after {
-}
+#wepub blockquote::after {}
+
 /* 行内代码 */
-#wenyan p code {
+#wepub p code {
     font-family: var(--monospace-font);
     color: #ff502c;
     padding: 4px 6px;
     font-size: 0.78em;
 }
+
 /* 代码块外围 */
-#wenyan pre {
+#wepub pre {
     border-radius: 5px;
     line-height: 2;
     margin: 1em 0.5em;
     padding: .5em;
     box-shadow: rgba(0, 0, 0, 0.55) 0px 1px 5px;
 }
+
 /* 代码块 */
-#wenyan pre code {
+#wepub pre code {
     font-family: var(--monospace-font);
     display: block;
     overflow-x: auto;
     margin: .5em;
     padding: 0;
 }
+
 /* 分割线 */
-#wenyan hr {
+#wepub hr {
     border: none;
     border-top: 1px solid #ddd;
     margin-top: 2em;
     margin-bottom: 2em;
 }
+
 /* 链接 */
-#wenyan a {
+#wepub a {
     word-wrap: break-word;
     color: #0069c2;
 }
+
 /* 原始链接旁脚注上标 */
-#wenyan .footnote {
+#wepub .footnote {
     color: #0069c2;
 }
+
 /* 脚注行 */
-#wenyan #footnotes p {
+#wepub #footnotes p {
     display: flex;
     margin: 0;
     font-size: 0.9em;
 }
+
 /* 脚注行内编号 */
-#wenyan .footnote-num {
+#wepub .footnote-num {
     display: inline;
     width: 10%;
 }
+
 /* 脚注行内文字 */
-#wenyan .footnote-txt {
+#wepub .footnote-txt {
     display: inline;
     width: 90%;
     word-wrap: break-word;

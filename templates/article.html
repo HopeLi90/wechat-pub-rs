@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="description" content="{{ description }}">
+    <meta name="author" content="{{ author }}">
+    <title>{{ title }}</title>
+
+    <style>
+        /* Reset and base styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", "Source Han Sans SC", "Noto Sans CJK SC", "WenQuanYi Micro Hei", sans-serif;
+            line-height: 1.75;
+            color: #333;
+            background-color: #fff;
+            word-wrap: break-word;
+            word-break: break-word;
+        }
+
+        {{ theme_css|safe }}
+    </style>
+</head>
+<body>
+    <article id="wepub">
+        {{ content|safe }}
+    </article>
+</body>
+</html>
