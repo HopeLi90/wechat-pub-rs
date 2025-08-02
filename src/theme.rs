@@ -166,12 +166,13 @@ impl ThemeManager {
 
     /// Loads theme CSS from file.
     pub fn load_theme_from_file(&mut self, theme_name: &str, css_path: &Path) -> Result<()> {
-        let css = std::fs::read_to_string(css_path)
-            .map_err(|e| WeChatError::file_error(
+        let css = std::fs::read_to_string(css_path).map_err(|e| {
+            WeChatError::file_error(
                 css_path.display().to_string(),
-                format!("Failed to read theme CSS: {}", e)
-            ))?;
-        
+                format!("Failed to read theme CSS: {e}"),
+            )
+        })?;
+
         let html_template = self.get_default_html_template();
         let template = ThemeTemplate::new(css, html_template, theme_name.to_string());
         self.templates.insert(theme_name.to_string(), template);
@@ -195,7 +196,8 @@ impl ThemeManager {
         {{CONTENT}}
     </section>
 </body>
-</html>"#.to_string()
+</html>"#
+            .to_string()
     }
 
     /// Creates a built-in theme template.
@@ -317,9 +319,9 @@ impl ThemeManager {
 #wenyan li {
     margin: 0.3em 0;
 }
-"#.to_string()
+"#
+        .to_string()
     }
-
 
     /// Renders markdown content with the specified theme.
     pub fn render(
@@ -392,10 +394,7 @@ mod tests {
             "phycat".parse::<BuiltinTheme>().unwrap(),
             BuiltinTheme::PhyCat
         );
-        assert_eq!(
-            "pie".parse::<BuiltinTheme>().unwrap(),
-            BuiltinTheme::Pie
-        );
+        assert_eq!("pie".parse::<BuiltinTheme>().unwrap(), BuiltinTheme::Pie);
         assert_eq!(
             "purple".parse::<BuiltinTheme>().unwrap(),
             BuiltinTheme::Purple

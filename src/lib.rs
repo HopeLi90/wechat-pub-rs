@@ -5,6 +5,9 @@
 //! ## Features
 //!
 //! - **Simple API**: One function to upload entire articles: `wx.upload("./article.md")`
+//! - **Smart Deduplication**:
+//!   - Images deduplicated by BLAKE3 content hash
+//!   - Drafts deduplicated by title (updates existing drafts)
 //! - **Robust**: Comprehensive error handling and retry mechanisms
 //! - **Fast**: Async/await with concurrent image uploads
 //! - **Type Safe**: Compile-time guarantees and runtime reliability
@@ -17,14 +20,14 @@
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     let client = WeChatClient::new("your_app_id", "your_app_secret").await?;
-//!     
+//!
 //!     // Upload using theme from frontmatter, or default theme
 //!     let draft_id = client.upload("./article.md").await?;
-//!     
+//!
 //!     // Or specify theme explicitly via options
 //!     let options = UploadOptions::with_theme("lapis");
 //!     let draft_id = client.upload_with_options("./article.md", options).await?;
-//!     
+//!
 //!     println!("Draft created with ID: {}", draft_id);
 //!     Ok(())
 //! }

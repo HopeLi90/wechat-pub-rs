@@ -6,6 +6,7 @@ use crate::http::{
     DraftResponse, ImageUploadResponse, MaterialUploadResponse, WeChatHttpClient, WeChatResponse,
 };
 use crate::markdown::ImageRef;
+use blake3;
 use futures::future::try_join_all;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,7 +14,6 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::Semaphore;
-use blake3;
 
 /// Maximum concurrent image uploads to prevent overwhelming the server
 const MAX_CONCURRENT_UPLOADS: usize = 5;
@@ -227,16 +227,12 @@ impl ImageUploader {
         // Calculate BLAKE3 hash of the image content
         let hash = blake3::hash(&image_data);
         let hash_str = hash.to_hex().to_string();
-        log::debug!("Image hash: {}", hash_str);
+        log::debug!("Image hash: {hash_str}");
 
         // Check if this image already exists by searching materials
         if let Some(existing_url) = self.find_existing_image_by_hash(&hash_str).await? {
-            log::info!(
-                "Image already exists with hash {}, reusing URL: {}",
-                hash_str,
-                existing_url
-            );
-            
+            log::info!("Image already exists with hash {hash_str}, reusing URL: {existing_url}");
+
             // Extract media_id from URL (format: https://mmbiz.qpic.cn/mmbiz_jpg/{media_id}/0)
             let media_id = existing_url
                 .strip_prefix("https://mmbiz.qpic.cn/mmbiz_jpg/")
@@ -253,8 +249,8 @@ impl ImageUploader {
 
         // Use hash as filename with appropriate extension
         let extension = self.get_image_extension(&image_ref.original_url, &image_data);
-        let filename = format!("{}.{}", hash_str, extension);
-        log::debug!("Uploading new image with filename: {}", filename);
+        let filename = format!("{hash_str}.{extension}");
+        log::debug!("Uploading new image with filename: {filename}");
 
         // Upload to WeChat
         let access_token = self.token_manager.get_access_token().await?;
@@ -312,7 +308,6 @@ impl ImageUploader {
             })
     }
 
-
     /// Gets the image extension based on URL and content.
     fn get_image_extension(&self, url: &str, image_data: &[u8]) -> String {
         // First try to get from URL
@@ -334,7 +329,7 @@ impl ImageUploader {
                 _ => {}
             }
         }
-        
+
         // Check for WebP
         if image_data.len() >= 12 && &image_data[0..4] == b"RIFF" && &image_data[8..12] == b"WEBP" {
             return "webp".to_string();
@@ -346,34 +341,40 @@ impl ImageUploader {
 
     /// Searches for an existing image by its hash in recent materials.
     async fn find_existing_image_by_hash(&self, hash: &str) -> Result<Option<String>> {
-        log::debug!("Checking for existing image with hash: {}", hash);
-        
+        log::debug!("Checking for existing image with hash: {hash}");
+
         // Check the most recent 20 materials
         let access_token = self.token_manager.get_access_token().await?;
-        
+
         let request = serde_json::json!({
             "type": "image",
             "offset": 0,
             "count": 20
         });
-        
+
         let response = self
             .http_client
-            .post_json_with_token("/cgi-bin/material/batchget_material", &access_token, &request)
+            .post_json_with_token(
+                "/cgi-bin/material/batchget_material",
+                &access_token,
+                &request,
+            )
             .await
             .map_err(|e| {
-                log::warn!("Failed to list materials: {}", e);
+                log::warn!("Failed to list materials: {e}");
                 e
             });
-        
+
         // If we can't list materials, just proceed with upload
         let response = match response {
             Ok(resp) => resp,
             Err(_) => return Ok(None),
         };
-        
-        let materials_result = response.json::<WeChatResponse<MaterialListResponse>>().await;
-        
+
+        let materials_result = response
+            .json::<WeChatResponse<MaterialListResponse>>()
+            .await;
+
         match materials_result {
             Ok(materials_response) => {
                 if let Ok(material_list) = materials_response.into_result() {
@@ -387,11 +388,11 @@ impl ImageUploader {
                 }
             }
             Err(e) => {
-                log::warn!("Failed to parse material list response: {}", e);
+                log::warn!("Failed to parse material list response: {e}");
             }
         }
-        
-        log::debug!("No existing image found with hash: {}", hash);
+
+        log::debug!("No existing image found with hash: {hash}");
         Ok(None)
     }
 
@@ -404,15 +405,15 @@ impl ImageUploader {
 
         // Load image data
         let image_data = self.load_local_image(cover_path).await?;
-        
+
         // Calculate BLAKE3 hash for the cover image
         let hash = blake3::hash(&image_data);
         let hash_str = hash.to_hex().to_string();
-        
+
         // Use hash as filename with appropriate extension
         let extension = self.get_image_extension(&cover_path.to_string_lossy(), &image_data);
-        let filename = format!("{}.{}", hash_str, extension);
-        log::debug!("Uploading cover image with hash: {}", hash_str);
+        let filename = format!("{hash_str}.{extension}");
+        log::debug!("Uploading cover image with hash: {hash_str}");
 
         // Upload as permanent material
         let access_token = self.token_manager.get_access_token().await?;
@@ -461,7 +462,7 @@ impl DraftManager {
         }
     }
 
-    /// Creates a new draft with articles.
+    /// Creates a new draft with articles, or updates existing if title matches.
     pub async fn create_draft(&self, articles: Vec<Article>) -> Result<String> {
         if articles.is_empty() {
             return Err(WeChatError::config_error(
@@ -469,7 +470,22 @@ impl DraftManager {
             ));
         }
 
-        log::info!("Creating draft with {} articles", articles.len());
+        let title = &articles[0].title;
+        log::info!("Processing draft with title: {title}");
+
+        // Check recent drafts for matching title
+        if let Some(existing_media_id) = self.find_draft_by_title(title).await? {
+            log::info!(
+                "Found existing draft with title '{title}', updating media_id: {existing_media_id}"
+            );
+
+            // Update existing draft
+            self.update_draft(&existing_media_id, articles).await?;
+            return Ok(existing_media_id);
+        }
+
+        // No existing draft found, create new one
+        log::info!("No existing draft found, creating new draft");
 
         let request = DraftRequest { articles };
         let access_token = self.token_manager.get_access_token().await?;
@@ -483,7 +499,7 @@ impl DraftManager {
         let draft = draft_response.into_result()?;
 
         log::info!(
-            "Successfully created draft with media_id: {}",
+            "Successfully created new draft with media_id: {}",
             draft.media_id
         );
         Ok(draft.media_id)
@@ -589,6 +605,33 @@ impl DraftManager {
             .map(|result| (result.image_ref.original_url.clone(), result.url.clone()))
             .collect()
     }
+
+    /// Finds a draft by title in recent drafts.
+    async fn find_draft_by_title(&self, title: &str) -> Result<Option<String>> {
+        log::debug!("Searching for draft with title: {title}");
+
+        // List recent 20 drafts
+        let drafts = match self.list_drafts(0, 20).await {
+            Ok(drafts) => drafts,
+            Err(e) => {
+                log::warn!("Failed to list drafts: {e}");
+                return Ok(None);
+            }
+        };
+
+        // Search for matching title
+        for draft in drafts {
+            if let Some(first_article) = draft.content.news_item.first() {
+                if first_article.title == title {
+                    log::info!("Found existing draft with matching title");
+                    return Ok(Some(draft.media_id));
+                }
+            }
+        }
+
+        log::debug!("No draft found with title: {title}");
+        Ok(None)
+    }
 }
 
 #[cfg(test)]
@@ -679,11 +722,11 @@ mod tests {
         assert_eq!(uploader.get_image_extension("test.jpg", &[]), "jpg");
         assert_eq!(uploader.get_image_extension("test.png", &[]), "png");
         assert_eq!(uploader.get_image_extension("test.webp", &[]), "webp");
-        
+
         // Test content-based detection for JPEG
         let jpeg_header = vec![0xFF, 0xD8, 0xFF, 0xE0];
         assert_eq!(uploader.get_image_extension("noext", &jpeg_header), "jpg");
-        
+
         // Test content-based detection for PNG
         let png_header = vec![0x89, 0x50, 0x4E, 0x47];
         assert_eq!(uploader.get_image_extension("noext", &png_header), "png");

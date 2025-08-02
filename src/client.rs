@@ -206,18 +206,20 @@ impl WeChatClient {
         let cover_media_id = Some(self.upload_cover_image(cover_path, base_dir).await?);
 
         // Step 5: Render content with theme (from frontmatter, options, or default)
-        let theme = content.theme.as_ref()
+        let theme = content
+            .theme
+            .as_ref()
             .or(Some(&options.theme))
             .map(|t| t.as_str())
             .unwrap_or("default");
-        
+
         // Validate theme exists
         if !self.theme_manager.has_theme(theme) {
             return Err(WeChatError::ThemeNotFound {
                 theme: theme.to_string(),
             });
         }
-        
+
         let html_content = self.render_content(&content, theme, &options)?;
 
         // Step 6: Create article and draft
@@ -234,11 +236,7 @@ impl WeChatClient {
     }
 
     /// Updates an existing draft with new content.
-    pub async fn update_draft(
-        &self,
-        media_id: &str,
-        markdown_path: &str,
-    ) -> Result<()> {
+    pub async fn update_draft(&self, media_id: &str, markdown_path: &str) -> Result<()> {
         let options = UploadOptions::default();
         self.update_draft_with_options(media_id, markdown_path, options)
             .await
@@ -280,18 +278,20 @@ impl WeChatClient {
 
         let cover_media_id = Some(self.upload_cover_image(cover_path, base_dir).await?);
 
-        let theme = content.theme.as_ref()
+        let theme = content
+            .theme
+            .as_ref()
             .or(Some(&options.theme))
             .map(|t| t.as_str())
             .unwrap_or("default");
-        
+
         // Validate theme exists
         if !self.theme_manager.has_theme(theme) {
             return Err(WeChatError::ThemeNotFound {
                 theme: theme.to_string(),
             });
         }
-        
+
         let html_content = self.render_content(&content, theme, &options)?;
         let article = self.create_article(&content, &options, html_content, cover_media_id);
 
@@ -478,7 +478,12 @@ impl WeChatClient {
         self.image_uploader.upload_cover_material(&cover_path).await
     }
 
-    fn render_content(&self, content: &MarkdownContent, theme: &str, options: &UploadOptions) -> Result<String> {
+    fn render_content(
+        &self,
+        content: &MarkdownContent,
+        theme: &str,
+        options: &UploadOptions,
+    ) -> Result<String> {
         let mut metadata = content.metadata.clone();
 
         // Use frontmatter values as defaults, override with options if provided
