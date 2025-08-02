@@ -13,6 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::Semaphore;
+use blake3;
 
 /// Maximum concurrent image uploads to prevent overwhelming the server
 const MAX_CONCURRENT_UPLOADS: usize = 5;
@@ -127,6 +128,23 @@ pub struct DraftListResponse {
     pub item: Vec<DraftInfo>,
 }
 
+/// Material item in the list response.
+#[derive(Debug, Deserialize)]
+pub struct MaterialItem {
+    pub media_id: String,
+    pub name: String,
+    pub update_time: u64,
+    pub url: String,
+}
+
+/// List materials response.
+#[derive(Debug, Deserialize)]
+pub struct MaterialListResponse {
+    pub total_count: u32,
+    pub item_count: u32,
+    pub item: Vec<MaterialItem>,
+}
+
 /// Image uploader with concurrent upload capabilities.
 #[derive(Debug)]
 pub struct ImageUploader {
@@ -196,7 +214,7 @@ impl ImageUploader {
             .await
             .map_err(|e| WeChatError::Internal(anyhow::anyhow!("Semaphore error: {}", e)))?;
 
-        log::debug!("Uploading image: {}", image_ref.original_url);
+        log::debug!("Processing image: {}", image_ref.original_url);
 
         // Load image data
         let image_data = if image_ref.is_local {
@@ -206,8 +224,37 @@ impl ImageUploader {
             self.download_remote_image(&image_ref.original_url).await?
         };
 
-        // Get filename for upload
-        let filename = self.extract_filename(&image_ref.original_url);
+        // Calculate BLAKE3 hash of the image content
+        let hash = blake3::hash(&image_data);
+        let hash_str = hash.to_hex().to_string();
+        log::debug!("Image hash: {}", hash_str);
+
+        // Check if this image already exists by searching materials
+        if let Some(existing_url) = self.find_existing_image_by_hash(&hash_str).await? {
+            log::info!(
+                "Image already exists with hash {}, reusing URL: {}",
+                hash_str,
+                existing_url
+            );
+            
+            // Extract media_id from URL (format: https://mmbiz.qpic.cn/mmbiz_jpg/{media_id}/0)
+            let media_id = existing_url
+                .strip_prefix("https://mmbiz.qpic.cn/mmbiz_jpg/")
+                .and_then(|s| s.strip_suffix("/0"))
+                .unwrap_or(&hash_str)
+                .to_string();
+
+            return Ok(UploadResult {
+                image_ref,
+                media_id,
+                url: existing_url,
+            });
+        }
+
+        // Use hash as filename with appropriate extension
+        let extension = self.get_image_extension(&image_ref.original_url, &image_data);
+        let filename = format!("{}.{}", hash_str, extension);
+        log::debug!("Uploading new image with filename: {}", filename);
 
         // Upload to WeChat
         let access_token = self.token_manager.get_access_token().await?;
@@ -232,10 +279,11 @@ impl ImageUploader {
             image_upload.media_id
         );
 
-        log::debug!(
-            "Successfully uploaded image: {} -> {}",
+        log::info!(
+            "Successfully uploaded new image: {} -> {} (hash: {})",
             image_ref.original_url,
-            url
+            url,
+            hash_str
         );
 
         Ok(UploadResult {
@@ -264,13 +312,87 @@ impl ImageUploader {
             })
     }
 
-    /// Extracts filename from URL or path.
-    fn extract_filename(&self, url_or_path: &str) -> String {
-        Path::new(url_or_path)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("image.jpg")
-            .to_string()
+
+    /// Gets the image extension based on URL and content.
+    fn get_image_extension(&self, url: &str, image_data: &[u8]) -> String {
+        // First try to get from URL
+        if let Some(ext) = Path::new(url)
+            .extension()
+            .and_then(|e| e.to_str())
+            .filter(|e| matches!(*e, "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp"))
+        {
+            return ext.to_string();
+        }
+
+        // Otherwise, detect from content
+        if image_data.len() >= 4 {
+            match &image_data[0..4] {
+                [0xFF, 0xD8, 0xFF, _] => return "jpg".to_string(),
+                [0x89, 0x50, 0x4E, 0x47] => return "png".to_string(),
+                [0x47, 0x49, 0x46, _] => return "gif".to_string(),
+                [0x42, 0x4D, _, _] => return "bmp".to_string(),
+                _ => {}
+            }
+        }
+        
+        // Check for WebP
+        if image_data.len() >= 12 && &image_data[0..4] == b"RIFF" && &image_data[8..12] == b"WEBP" {
+            return "webp".to_string();
+        }
+
+        // Default to jpg
+        "jpg".to_string()
+    }
+
+    /// Searches for an existing image by its hash in recent materials.
+    async fn find_existing_image_by_hash(&self, hash: &str) -> Result<Option<String>> {
+        log::debug!("Checking for existing image with hash: {}", hash);
+        
+        // Check the most recent 20 materials
+        let access_token = self.token_manager.get_access_token().await?;
+        
+        let request = serde_json::json!({
+            "type": "image",
+            "offset": 0,
+            "count": 20
+        });
+        
+        let response = self
+            .http_client
+            .post_json_with_token("/cgi-bin/material/batchget_material", &access_token, &request)
+            .await
+            .map_err(|e| {
+                log::warn!("Failed to list materials: {}", e);
+                e
+            });
+        
+        // If we can't list materials, just proceed with upload
+        let response = match response {
+            Ok(resp) => resp,
+            Err(_) => return Ok(None),
+        };
+        
+        let materials_result = response.json::<WeChatResponse<MaterialListResponse>>().await;
+        
+        match materials_result {
+            Ok(materials_response) => {
+                if let Ok(material_list) = materials_response.into_result() {
+                    // Check if any material name starts with our hash
+                    for item in material_list.item {
+                        if item.name.starts_with(hash) {
+                            log::info!("Found existing image with hash {}: {}", hash, item.url);
+                            return Ok(Some(item.url));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("Failed to parse material list response: {}", e);
+            }
+        }
+        
+        log::debug!("No existing image found with hash: {}", hash);
+        Ok(None)
     }
 
     /// Uploads a cover image as permanent material.
@@ -282,7 +404,15 @@ impl ImageUploader {
 
         // Load image data
         let image_data = self.load_local_image(cover_path).await?;
-        let filename = self.extract_filename(&cover_path.to_string_lossy());
+        
+        // Calculate BLAKE3 hash for the cover image
+        let hash = blake3::hash(&image_data);
+        let hash_str = hash.to_hex().to_string();
+        
+        // Use hash as filename with appropriate extension
+        let extension = self.get_image_extension(&cover_path.to_string_lossy(), &image_data);
+        let filename = format!("{}.{}", hash_str, extension);
+        log::debug!("Uploading cover image with hash: {}", hash_str);
 
         // Upload as permanent material
         let access_token = self.token_manager.get_access_token().await?;
@@ -536,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn test_filename_extraction() {
+    fn test_image_extension_detection() {
         let http_client = Arc::new(WeChatHttpClient::new().unwrap());
         let token_manager = Arc::new(TokenManager::new(
             "test_app_id",
@@ -545,13 +675,18 @@ mod tests {
         ));
         let uploader = ImageUploader::new(http_client, token_manager);
 
-        assert_eq!(uploader.extract_filename("./images/test.jpg"), "test.jpg");
-        assert_eq!(
-            uploader.extract_filename("https://example.com/path/image.png"),
-            "image.png"
-        );
-        assert_eq!(uploader.extract_filename("noextension"), "noextension");
-        assert_eq!(uploader.extract_filename(""), "image.jpg");
+        // Test URL-based extension detection
+        assert_eq!(uploader.get_image_extension("test.jpg", &[]), "jpg");
+        assert_eq!(uploader.get_image_extension("test.png", &[]), "png");
+        assert_eq!(uploader.get_image_extension("test.webp", &[]), "webp");
+        
+        // Test content-based detection for JPEG
+        let jpeg_header = vec![0xFF, 0xD8, 0xFF, 0xE0];
+        assert_eq!(uploader.get_image_extension("noext", &jpeg_header), "jpg");
+        
+        // Test content-based detection for PNG
+        let png_header = vec![0x89, 0x50, 0x4E, 0x47];
+        assert_eq!(uploader.get_image_extension("noext", &png_header), "png");
     }
 
     #[test]
