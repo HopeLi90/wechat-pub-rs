@@ -1,4 +1,103 @@
 //! Upload module for handling image uploads and draft management.
+//!
+//! This module provides comprehensive functionality for uploading images and managing
+//! WeChat article drafts, with built-in deduplication, concurrent processing, and error recovery.
+//!
+//! ## Features
+//!
+//! - **Concurrent Image Uploads**: Up to 5 simultaneous image uploads for performance
+//! - **Content Deduplication**: BLAKE3 hash-based image deduplication to avoid duplicates
+//! - **Size Validation**: Automatic file size validation (max 10MB for images)
+//! - **Format Support**: JPEG, PNG, GIF image format support
+//! - **Draft Management**: Full CRUD operations for article drafts
+//! - **Streaming Downloads**: Memory-efficient handling of remote images
+//!
+//! ## Image Upload Process
+//!
+//! 1. **Validation**: Check file size and format
+//! 2. **Hash Calculation**: Generate BLAKE3 hash for deduplication
+//! 3. **Concurrent Upload**: Process multiple images simultaneously
+//! 4. **URL Replacement**: Replace local paths with WeChat URLs
+//! 5. **Error Recovery**: Retry failed uploads with exponential backoff
+//!
+//! ## Draft Management
+//!
+//! The module supports full lifecycle management of WeChat article drafts:
+//!
+//! - **Create**: Upload new article content as a draft
+//! - **Read**: Retrieve draft information and content
+//! - **Update**: Modify existing draft content
+//! - **Delete**: Remove drafts
+//! - **List**: Paginated listing of all drafts
+//!
+//! ## Usage Examples
+//!
+//! ### Image Upload
+//!
+//! ```rust
+//! use wechat_pub_rs::upload::ImageUploader;
+//! use wechat_pub_rs::markdown::ImageRef;
+//! use std::path::Path;
+//! # use std::sync::Arc;
+//! # use wechat_pub_rs::auth::TokenManager;
+//! # use wechat_pub_rs::http::WeChatHttpClient;
+//!
+//! # async fn example() -> wechat_pub_rs::Result<()> {
+//! # let http_client = Arc::new(WeChatHttpClient::new()?);
+//! # let token_manager = Arc::new(TokenManager::new("id".to_string(), "secret".to_string(), http_client.clone()));
+//! let uploader = ImageUploader::new(http_client, token_manager);
+//!
+//! let image_ref = ImageRef::new(
+//!     "Alt text".to_string(),
+//!     "images/photo.jpg".to_string(),
+//!     (0, 0)
+//! );
+//!
+//! let results = uploader.upload_images(vec![image_ref], Path::new(".")).await?;
+//! for result in results {
+//!     println!("Uploaded: {} -> {}", result.image_ref.original_url, result.url);
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### Draft Management
+//!
+//! ```rust
+//! use wechat_pub_rs::upload::{DraftManager, Article};
+//! # use std::sync::Arc;
+//! # use wechat_pub_rs::auth::TokenManager;
+//! # use wechat_pub_rs::http::WeChatHttpClient;
+//!
+//! # async fn example() -> wechat_pub_rs::Result<()> {
+//! # let http_client = Arc::new(WeChatHttpClient::new()?);
+//! # let token_manager = Arc::new(TokenManager::new("id".to_string(), "secret".to_string(), http_client.clone()));
+//! let draft_manager = DraftManager::new(http_client, token_manager);
+//!
+//! // Create a new article
+//! let article = Article::new(
+//!     "Article Title".to_string(),
+//!     "Author Name".to_string(),
+//!     "<h1>Article Content</h1>".to_string(),
+//! ).with_digest("Article summary".to_string());
+//!
+//! // Create draft
+//! let draft_id = draft_manager.create_draft(vec![article]).await?;
+//! println!("Created draft: {}", draft_id);
+//!
+//! // List drafts
+//! let drafts = draft_manager.list_drafts(0, 10).await?;
+//! println!("Found {} drafts", drafts.len());
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Performance Characteristics
+//!
+//! - **Concurrent Uploads**: Maximum 5 simultaneous image uploads
+//! - **Memory Efficiency**: Streaming file operations, no full file buffering
+//! - **Deduplication**: O(1) hash-based duplicate detection
+//! - **Error Recovery**: Exponential backoff with jitter for failed requests
 
 use crate::auth::TokenManager;
 use crate::error::{Result, WeChatError};

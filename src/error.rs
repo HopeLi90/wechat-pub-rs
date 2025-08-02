@@ -1,4 +1,41 @@
-//! Error types for the WeChat Official Account SDK.
+//! Error types and handling for the WeChat Official Account SDK.
+//!
+//! This module provides comprehensive error handling with specific error types for different
+//! failure scenarios. Errors are designed to be actionable and include retry logic.
+//!
+//! ## Error Categories
+//!
+//! - **Network Errors**: Connection issues, timeouts (retryable)
+//! - **Authentication Errors**: Invalid tokens, credentials (retryable once)
+//! - **File System Errors**: Missing files, read failures (not retryable)
+//! - **Parsing Errors**: Markdown, JSON parsing failures (not retryable)
+//! - **WeChat API Errors**: Server responses with error codes (situational)
+//! - **Configuration Errors**: Invalid settings (not retryable)
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use wechat_pub_rs::{WeChatError, Result};
+//! use wechat_pub_rs::error::ErrorSeverity;
+//!
+//! fn handle_error(error: WeChatError) {
+//!     match error.severity() {
+//!         ErrorSeverity::Warning => {
+//!             log::warn!("Recoverable error: {}", error);
+//!             if error.is_retryable() {
+//!                 // Implement retry logic
+//!             }
+//!         }
+//!         ErrorSeverity::Error => {
+//!             log::error!("Error occurred: {}", error);
+//!         }
+//!         ErrorSeverity::Critical => {
+//!             log::error!("Critical error: {}", error);
+//!             // May require immediate attention
+//!         }
+//!     }
+//! }
+//! ```
 
 use std::fmt;
 

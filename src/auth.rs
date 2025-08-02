@@ -1,4 +1,75 @@
 //! Authentication module for managing WeChat access tokens.
+//!
+//! This module handles the complex process of WeChat access token management,
+//! including automatic refresh, caching, and thread-safe access.
+//!
+//! ## Features
+//!
+//! - **Automatic Token Refresh**: Tokens are refreshed before expiration
+//! - **Thread-Safe Caching**: Multiple threads can safely access tokens
+//! - **Expiration Handling**: Built-in buffer time to prevent edge cases
+//! - **Concurrent Protection**: Prevents multiple simultaneous refresh requests
+//! - **Error Recovery**: Comprehensive error handling for auth failures
+//!
+//! ## Token Lifecycle
+//!
+//! 1. **Initial Request**: Token requested on first API call
+//! 2. **Caching**: Token cached with expiration time
+//! 3. **Validation**: Each use checks if token is still valid
+//! 4. **Refresh**: Automatic refresh before expiration (300s buffer)
+//! 5. **Cleanup**: Expired tokens are discarded
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use wechat_pub_rs::auth::TokenManager;
+//! use wechat_pub_rs::http::WeChatHttpClient;
+//! use std::sync::Arc;
+//!
+//! # async fn example() -> wechat_pub_rs::Result<()> {
+//! let http_client = Arc::new(WeChatHttpClient::new()?);
+//! let token_manager = TokenManager::new(
+//!     "your_app_id".to_string(),
+//!     "your_app_secret".to_string(),
+//!     http_client
+//! );
+//!
+//! // Get a valid access token (handles caching and refresh automatically)
+//! let token = token_manager.get_access_token().await?;
+//! println!("Access token: {}", token);
+//!
+//! // Force refresh if needed
+//! let new_token = token_manager.force_refresh().await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Thread Safety
+//!
+//! The token manager is designed to be shared across multiple threads safely:
+//!
+//! ```rust
+//! use std::sync::Arc;
+//! # use wechat_pub_rs::auth::TokenManager;
+//! # use wechat_pub_rs::http::WeChatHttpClient;
+//!
+//! # async fn example() -> wechat_pub_rs::Result<()> {
+//! # let http_client = Arc::new(WeChatHttpClient::new()?);
+//! let token_manager = Arc::new(TokenManager::new(
+//!     "app_id".to_string(),
+//!     "app_secret".to_string(),
+//!     http_client
+//! ));
+//!
+//! // Share across threads
+//! let manager_clone = Arc::clone(&token_manager);
+//! tokio::spawn(async move {
+//!     let token = manager_clone.get_access_token().await.unwrap();
+//!     // Use token...
+//! });
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::error::Result;
 use crate::http::{AccessTokenResponse, WeChatHttpClient, WeChatResponse};

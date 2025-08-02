@@ -1,4 +1,58 @@
 //! Theme system for rendering markdown content to HTML.
+//!
+//! This module provides a comprehensive theming system that converts Markdown content
+//! into beautifully styled HTML suitable for WeChat Official Account articles.
+//!
+//! ## Features
+//!
+//! - **8 Built-in Themes**: Carefully designed themes for different aesthetics
+//! - **Syntax Highlighting**: 10 different code highlighting themes
+//! - **CSS Variable Processing**: Dynamic theming with CSS custom properties
+//! - **Template Engine**: Askama-based HTML templating
+//! - **Responsive Design**: Mobile-first responsive layouts
+//!
+//! ## Available Themes
+//!
+//! | Theme | Description | Best For |
+//! |-------|-------------|----------|
+//! | `default` | Clean, minimal design | General content |
+//! | `lapis` | Blue accents, elegant | Technical articles |
+//! | `maize` | Warm yellow tones | Creative content |
+//! | `orangeheart` | Orange accents | Personal blogs |
+//! | `phycat` | Unique styling | Special content |
+//! | `pie` | Sweet, colorful | Lifestyle content |
+//! | `purple` | Purple accents | Creative writing |
+//! | `rainbow` | Colorful, vibrant | Fun content |
+//!
+//! ## Code Highlighting Themes
+//!
+//! - `github` / `github-dark` - GitHub styling
+//! - `atom-one-light` / `atom-one-dark` - Atom editor themes
+//! - `solarized-light` / `solarized-dark` - Solarized color scheme
+//! - `vscode` - VS Code default theme
+//! - `monokai`, `dracula`, `xcode` - Popular editor themes
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use wechat_pub_rs::theme::{ThemeManager, BuiltinTheme};
+//! use std::collections::HashMap;
+//!
+//! let theme_manager = ThemeManager::new();
+//!
+//! // Check available themes
+//! let themes = theme_manager.available_themes();
+//! println!("Available themes: {:?}", themes);
+//!
+//! // Render content with a theme
+//! let metadata = HashMap::new();
+//! let html = theme_manager.render(
+//!     "# Hello World\nSome **bold** text",
+//!     "lapis",
+//!     "github",
+//!     &metadata
+//! ).unwrap();
+//! ```
 
 use crate::css_vars::CssVariableProcessor;
 use crate::error::{Result, WeChatError};

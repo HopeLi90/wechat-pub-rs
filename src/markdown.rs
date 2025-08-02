@@ -1,4 +1,61 @@
 //! Markdown parsing and image extraction module.
+//!
+//! This module handles the parsing of Markdown files with frontmatter support,
+//! image extraction, and content processing for WeChat article publishing.
+//!
+//! ## Features
+//!
+//! - **Frontmatter Support**: YAML frontmatter parsing for metadata
+//! - **Image Extraction**: Automatic detection and extraction of image references
+//! - **Content Processing**: Clean markdown processing with CommonMark
+//! - **Summary Generation**: Automatic article summary extraction
+//! - **URL Resolution**: Relative path resolution for local images
+//!
+//! ## Frontmatter Format
+//!
+//! ```yaml
+//! ---
+//! title: "Article Title"          # Article title (required for good UX)
+//! author: "Author Name"           # Author name (optional)
+//! cover: "images/cover.jpg"       # Cover image path (required)
+//! theme: "lapis"                  # Theme name (optional, defaults to "default")
+//! code: "github"                  # Code highlighting theme (optional)
+//! custom_field: "custom_value"    # Any additional metadata
+//! ---
+//! ```
+//!
+//! ## Image Handling
+//!
+//! The module automatically detects image references in markdown:
+//!
+//! ```markdown
+//! ![Alt text](images/photo.jpg)           # Local image
+//! ![Alt text](https://example.com/img.jpg) # Remote image (downloaded)
+//! ```
+//!
+//! Local images are resolved relative to the markdown file's directory.
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use wechat_pub_rs::markdown::MarkdownParser;
+//! use std::path::Path;
+//!
+//! # async fn example() -> wechat_pub_rs::Result<()> {
+//! let parser = MarkdownParser::new();
+//! let content = parser.parse_file(Path::new("article.md")).await?;
+//!
+//! println!("Title: {:?}", content.title);
+//! println!("Author: {:?}", content.author);
+//! println!("Theme: {:?}", content.theme);
+//! println!("Found {} images", content.images.len());
+//!
+//! // Generate summary
+//! let summary = content.get_summary(150);
+//! println!("Summary: {}", summary);
+//! # Ok(())
+//! # }
+//! ```
 
 use crate::error::{Result, WeChatError};
 use comrak::{Arena, ComrakOptions, nodes::NodeValue};
