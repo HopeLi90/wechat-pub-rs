@@ -610,10 +610,11 @@ impl DraftManager {
             articles.len()
         );
 
+        // According to WeChat API, the update request structure should wrap articles differently
         let request = serde_json::json!({
             "media_id": media_id,
             "index": 0,
-            "articles": articles
+            "articles": articles[0]  // WeChat expects a single article object, not an array
         });
 
         let access_token = self.token_manager.get_access_token().await?;
