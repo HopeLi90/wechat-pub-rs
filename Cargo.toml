@@ -1,0 +1,65 @@
+[package]
+name = "wechat-pub-rs"
+version = "0.1.0"
+authors = ["Your Name <YourName@yourdomain.com>"]
+edition = "2021"
+license = "MIT"
+documentation = "https://docs.rs/"
+repository = "https://github.com/TODO"
+homepage = "https://github.com/TODO"
+description = "A simple, high-performance WeChat Official Account Rust SDK for uploading articles and managing drafts"
+readme = "README.md"
+categories = ["api-bindings", "development-tools", "web-programming"]
+keywords = ["wechat", "weixin", "official-account", "sdk", "api"]
+
+[dependencies]
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "multipart",
+  "stream",
+  "rustls-tls",
+] }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+futures = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Markdown processing
+pulldown-cmark = "0.13"
+pulldown-cmark-to-cmark = "21.0"
+
+# Template engine
+tera = "1.20"
+
+# Async utilities
+tokio-util = "0.7"
+
+# Logging
+log = "0.4"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# File and path utilities
+mime_guess = "2.0"
+
+# UUID for request IDs
+uuid = { version = "1.0", features = ["v4"] }
+
+# URL manipulation
+url = "2.5"
+
+[dev-dependencies]
+tokio-test = "0.4"
+env_logger = "0.11"
+criterion = "0.7"
+tempfile = "3.0"
