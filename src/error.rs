@@ -107,9 +107,9 @@ impl WeChatError {
     /// Gets the severity level of the error for logging purposes.
     pub fn severity(&self) -> ErrorSeverity {
         match self {
-            WeChatError::Network(_)
-            | WeChatError::Timeout
-            | WeChatError::ImageUpload { .. } => ErrorSeverity::Warning,
+            WeChatError::Network(_) | WeChatError::Timeout | WeChatError::ImageUpload { .. } => {
+                ErrorSeverity::Warning
+            }
 
             WeChatError::InvalidToken | WeChatError::InvalidCredentials => ErrorSeverity::Error,
 

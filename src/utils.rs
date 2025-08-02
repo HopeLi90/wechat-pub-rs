@@ -99,7 +99,9 @@ pub fn validate_app_credentials(app_id: &str, app_secret: &str) -> Result<(), St
 
     // WeChat app IDs typically start with "wx" and are 18 characters long
     if !app_id.starts_with("wx") || app_id.len() != 18 {
-        return Err("Invalid app ID format (should start with 'wx' and be 18 characters)".to_string());
+        return Err(
+            "Invalid app ID format (should start with 'wx' and be 18 characters)".to_string(),
+        );
     }
 
     // WeChat app secrets are typically 32 characters long
@@ -132,7 +134,10 @@ mod tests {
     #[test]
     fn test_get_file_extension() {
         assert_eq!(get_file_extension(Path::new("test.md")), Some("md"));
-        assert_eq!(get_file_extension(Path::new("test.markdown")), Some("markdown"));
+        assert_eq!(
+            get_file_extension(Path::new("test.markdown")),
+            Some("markdown")
+        );
         assert_eq!(get_file_extension(Path::new("test.jpg")), Some("jpg"));
         assert_eq!(get_file_extension(Path::new("test")), None);
         assert_eq!(get_file_extension(Path::new(".gitignore")), None);
@@ -195,7 +200,10 @@ mod tests {
     #[test]
     fn test_validate_app_credentials() {
         // Valid credentials
-        assert!(validate_app_credentials("wx1234567890123456", "12345678901234567890123456789012").is_ok());
+        assert!(
+            validate_app_credentials("wx1234567890123456", "12345678901234567890123456789012")
+                .is_ok()
+        );
 
         // Invalid app ID
         assert!(validate_app_credentials("", "12345678901234567890123456789012").is_err());
@@ -209,8 +217,14 @@ mod tests {
 
     #[test]
     fn test_get_base_directory() {
-        assert_eq!(get_base_directory(Path::new("/path/to/file.md")), Some(Path::new("/path/to")));
-        assert_eq!(get_base_directory(Path::new("file.md")), Some(Path::new("")));
+        assert_eq!(
+            get_base_directory(Path::new("/path/to/file.md")),
+            Some(Path::new("/path/to"))
+        );
+        assert_eq!(
+            get_base_directory(Path::new("file.md")),
+            Some(Path::new(""))
+        );
         assert_eq!(get_base_directory(Path::new("/")), None);
     }
 
@@ -218,8 +232,17 @@ mod tests {
     fn test_resolve_path() {
         let base = Path::new("/base/dir");
 
-        assert_eq!(resolve_path(base, "relative.md"), PathBuf::from("/base/dir/relative.md"));
-        assert_eq!(resolve_path(base, "/absolute.md"), PathBuf::from("/absolute.md"));
-        assert_eq!(resolve_path(base, "./relative.md"), PathBuf::from("/base/dir/./relative.md"));
+        assert_eq!(
+            resolve_path(base, "relative.md"),
+            PathBuf::from("/base/dir/relative.md")
+        );
+        assert_eq!(
+            resolve_path(base, "/absolute.md"),
+            PathBuf::from("/absolute.md")
+        );
+        assert_eq!(
+            resolve_path(base, "./relative.md"),
+            PathBuf::from("/base/dir/./relative.md")
+        );
     }
 }

@@ -23,18 +23,18 @@
 //! }
 //! ```
 
-pub mod error;
-pub mod client;
-pub mod http;
 pub mod auth;
-pub mod upload;
+pub mod client;
+pub mod error;
+pub mod http;
 pub mod markdown;
 pub mod theme;
+pub mod upload;
 pub mod utils;
 
 // Re-export main types for convenience
-pub use client::{WeChatClient, UploadOptions};
-pub use error::{WeChatError, Result};
+pub use client::{UploadOptions, WeChatClient};
+pub use error::{Result, WeChatError};
 pub use theme::BuiltinTheme;
 
 #[cfg(test)]

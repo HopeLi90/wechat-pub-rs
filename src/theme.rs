@@ -92,8 +92,14 @@ impl ThemeTemplate {
         }
 
         // Set default values for common placeholders
-        html = html.replace("{{TITLE}}", metadata.get("title").unwrap_or(&"Untitled".to_string()));
-        html = html.replace("{{AUTHOR}}", metadata.get("author").unwrap_or(&"Anonymous".to_string()));
+        html = html.replace(
+            "{{TITLE}}",
+            metadata.get("title").unwrap_or(&"Untitled".to_string()),
+        );
+        html = html.replace(
+            "{{AUTHOR}}",
+            metadata.get("author").unwrap_or(&"Anonymous".to_string()),
+        );
 
         Ok(html)
     }
@@ -259,7 +265,8 @@ li {
     border-top: 1px solid #ecf0f1;
     padding-top: 1em;
 }
-"#.to_string();
+"#
+        .to_string();
 
         let html_template = r#"<!DOCTYPE html>
 <html lang="zh-CN">
@@ -275,7 +282,8 @@ li {
     {{CONTENT}}
     <div class="author">{{AUTHOR}}</div>
 </body>
-</html>"#.to_string();
+</html>"#
+            .to_string();
 
         ThemeTemplate::new(css, html_template, "github".to_string())
     }
@@ -397,7 +405,8 @@ tr:nth-child(2n) {
 <body>
     {{CONTENT}}
 </body>
-</html>"#.to_string();
+</html>"#
+            .to_string();
 
         ThemeTemplate::new(css, html_template, "github".to_string())
     }
@@ -543,7 +552,8 @@ th {
     {{CONTENT}}
     <div class="author">{{AUTHOR}}</div>
 </body>
-</html>"#.to_string();
+</html>"#
+            .to_string();
 
         ThemeTemplate::new(css, html_template, "wechat".to_string())
     }
@@ -635,7 +645,8 @@ li {
     margin-top: 3em;
     font-size: 0.9em;
 }
-"#.to_string();
+"#
+        .to_string();
 
         let html_template = r#"<!DOCTYPE html>
 <html lang="zh-CN">
@@ -651,7 +662,8 @@ li {
     {{CONTENT}}
     <div class="author">{{AUTHOR}}</div>
 </body>
-</html>"#.to_string();
+</html>"#
+            .to_string();
 
         ThemeTemplate::new(css, html_template, "minimal".to_string())
     }
@@ -663,11 +675,12 @@ li {
         theme_name: &str,
         metadata: &HashMap<String, String>,
     ) -> Result<String> {
-        let template = self.templates.get(theme_name).ok_or_else(|| {
-            WeChatError::ThemeNotFound {
-                theme: theme_name.to_string(),
-            }
-        })?;
+        let template =
+            self.templates
+                .get(theme_name)
+                .ok_or_else(|| WeChatError::ThemeNotFound {
+                    theme: theme_name.to_string(),
+                })?;
 
         // Convert markdown to HTML
         let parser = Parser::new_ext(markdown_content, self.markdown_options);
@@ -706,10 +719,22 @@ mod tests {
 
     #[test]
     fn test_builtin_theme_parsing() {
-        assert_eq!("default".parse::<BuiltinTheme>().unwrap(), BuiltinTheme::Default);
-        assert_eq!("github".parse::<BuiltinTheme>().unwrap(), BuiltinTheme::Github);
-        assert_eq!("wechat".parse::<BuiltinTheme>().unwrap(), BuiltinTheme::Wechat);
-        assert_eq!("minimal".parse::<BuiltinTheme>().unwrap(), BuiltinTheme::Minimal);
+        assert_eq!(
+            "default".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::Default
+        );
+        assert_eq!(
+            "github".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::Github
+        );
+        assert_eq!(
+            "wechat".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::Wechat
+        );
+        assert_eq!(
+            "minimal".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::Minimal
+        );
 
         assert!("nonexistent".parse::<BuiltinTheme>().is_err());
     }

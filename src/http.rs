@@ -62,8 +62,12 @@ impl WeChatHttpClient {
 
     /// Makes a GET request with access token.
     pub async fn get_with_token(&self, endpoint: &str, access_token: &str) -> Result<Response> {
-        let url = format!("{}{}?access_token={}", self.base_url, endpoint, access_token);
-        self.execute_with_retry(|| self.client.get(&url).send()).await
+        let url = format!(
+            "{}{}?access_token={}",
+            self.base_url, endpoint, access_token
+        );
+        self.execute_with_retry(|| self.client.get(&url).send())
+            .await
     }
 
     /// Makes a POST request with JSON body and access token.
@@ -73,7 +77,10 @@ impl WeChatHttpClient {
         access_token: &str,
         body: &T,
     ) -> Result<Response> {
-        let url = format!("{}{}?access_token={}", self.base_url, endpoint, access_token);
+        let url = format!(
+            "{}{}?access_token={}",
+            self.base_url, endpoint, access_token
+        );
         self.execute_with_retry(|| self.client.post(&url).json(body).send())
             .await
     }
@@ -87,7 +94,10 @@ impl WeChatHttpClient {
         file_data: Vec<u8>,
         filename: &str,
     ) -> Result<Response> {
-        let url = format!("{}{}?access_token={}", self.base_url, endpoint, access_token);
+        let url = format!(
+            "{}{}?access_token={}",
+            self.base_url, endpoint, access_token
+        );
 
         // Guess MIME type from filename
         let mime_type = mime_guess::from_path(filename)
@@ -103,7 +113,8 @@ impl WeChatHttpClient {
         self.execute_with_retry(move || {
             let part = multipart::Part::bytes(file_data.clone())
                 .file_name(filename.clone())
-                .mime_str(&mime_type).unwrap();
+                .mime_str(&mime_type)
+                .unwrap();
             let form = multipart::Form::new().part(field_name.clone(), part);
             client.post(&url).multipart(form).send()
         })
@@ -120,10 +131,7 @@ impl WeChatHttpClient {
     ) -> Result<Response> {
         let url = format!(
             "{}{}?access_token={}&type={}",
-            self.base_url,
-            "/cgi-bin/material/add_material",
-            access_token,
-            material_type
+            self.base_url, "/cgi-bin/material/add_material", access_token, material_type
         );
 
         // Guess MIME type from filename
@@ -139,7 +147,8 @@ impl WeChatHttpClient {
         self.execute_with_retry(move || {
             let part = multipart::Part::bytes(file_data.clone())
                 .file_name(filename.clone())
-                .mime_str(&mime_type).unwrap();
+                .mime_str(&mime_type)
+                .unwrap();
 
             let form = multipart::Form::new().part("media", part);
 

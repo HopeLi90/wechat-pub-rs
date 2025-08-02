@@ -105,7 +105,8 @@ impl TokenManager {
         );
 
         let response_bytes = self.http_client.download(&url).await?;
-        let api_response: WeChatResponse<AccessTokenResponse> = serde_json::from_slice(&response_bytes)?;
+        let api_response: WeChatResponse<AccessTokenResponse> =
+            serde_json::from_slice(&response_bytes)?;
         let token_response = api_response.into_result()?;
 
         // Create and cache the new token

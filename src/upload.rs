@@ -2,7 +2,9 @@
 
 use crate::auth::TokenManager;
 use crate::error::{Result, WeChatError};
-use crate::http::{DraftResponse, ImageUploadResponse, MaterialUploadResponse, WeChatHttpClient, WeChatResponse};
+use crate::http::{
+    DraftResponse, ImageUploadResponse, MaterialUploadResponse, WeChatHttpClient, WeChatResponse,
+};
 use crate::markdown::ImageRef;
 use futures::future::try_join_all;
 use serde::{Deserialize, Serialize};
@@ -162,9 +164,9 @@ impl ImageUploader {
                 let uploader = self.clone();
                 let base_path = base_path.to_owned();
 
-                tokio::spawn(async move {
-                    uploader.upload_single_image(image_ref, &base_path).await
-                })
+                tokio::spawn(
+                    async move { uploader.upload_single_image(image_ref, &base_path).await },
+                )
             })
             .collect();
 
@@ -245,22 +247,21 @@ impl ImageUploader {
 
     /// Loads image data from local file.
     async fn load_local_image(&self, path: &Path) -> Result<Vec<u8>> {
-        fs::read(path).await.map_err(|e| {
-            WeChatError::ImageUpload {
-                path: path.display().to_string(),
-                reason: format!("Failed to read local file: {e}"),
-            }
+        fs::read(path).await.map_err(|e| WeChatError::ImageUpload {
+            path: path.display().to_string(),
+            reason: format!("Failed to read local file: {e}"),
         })
     }
 
     /// Downloads image data from remote URL.
     async fn download_remote_image(&self, url: &str) -> Result<Vec<u8>> {
-        self.http_client.download(url).await.map_err(|e| {
-            WeChatError::ImageUpload {
+        self.http_client
+            .download(url)
+            .await
+            .map_err(|e| WeChatError::ImageUpload {
                 path: url.to_string(),
                 reason: format!("Failed to download remote image: {e}"),
-            }
-        })
+            })
     }
 
     /// Extracts filename from URL or path.
@@ -274,7 +275,10 @@ impl ImageUploader {
 
     /// Uploads a cover image as permanent material.
     pub async fn upload_cover_material(&self, cover_path: &Path) -> Result<String> {
-        log::info!("Uploading cover image as permanent material: {}", cover_path.display());
+        log::info!(
+            "Uploading cover image as permanent material: {}",
+            cover_path.display()
+        );
 
         // Load image data
         let image_data = self.load_local_image(cover_path).await?;
@@ -284,12 +288,7 @@ impl ImageUploader {
         let access_token = self.token_manager.get_access_token().await?;
         let response = self
             .http_client
-            .upload_material(
-                &access_token,
-                "image",
-                image_data,
-                &filename,
-            )
+            .upload_material(&access_token, "image", image_data, &filename)
             .await?;
 
         // Parse response
@@ -335,7 +334,9 @@ impl DraftManager {
     /// Creates a new draft with articles.
     pub async fn create_draft(&self, articles: Vec<Article>) -> Result<String> {
         if articles.is_empty() {
-            return Err(WeChatError::config_error("At least one article is required"));
+            return Err(WeChatError::config_error(
+                "At least one article is required",
+            ));
         }
 
         log::info!("Creating draft with {} articles", articles.len());
@@ -351,7 +352,10 @@ impl DraftManager {
         let draft_response: WeChatResponse<DraftResponse> = response.json().await?;
         let draft = draft_response.into_result()?;
 
-        log::info!("Successfully created draft with media_id: {}", draft.media_id);
+        log::info!(
+            "Successfully created draft with media_id: {}",
+            draft.media_id
+        );
         Ok(draft.media_id)
     }
 
@@ -374,10 +378,16 @@ impl DraftManager {
     /// Updates a draft.
     pub async fn update_draft(&self, media_id: &str, articles: Vec<Article>) -> Result<()> {
         if articles.is_empty() {
-            return Err(WeChatError::config_error("At least one article is required"));
+            return Err(WeChatError::config_error(
+                "At least one article is required",
+            ));
         }
 
-        log::info!("Updating draft {} with {} articles", media_id, articles.len());
+        log::info!(
+            "Updating draft {} with {} articles",
+            media_id,
+            articles.len()
+        );
 
         let request = serde_json::json!({
             "media_id": media_id,
@@ -506,7 +516,10 @@ mod tests {
         ));
 
         let uploader = ImageUploader::new(http_client, token_manager);
-        assert_eq!(uploader.semaphore.available_permits(), MAX_CONCURRENT_UPLOADS);
+        assert_eq!(
+            uploader.semaphore.available_permits(),
+            MAX_CONCURRENT_UPLOADS
+        );
     }
 
     #[tokio::test]

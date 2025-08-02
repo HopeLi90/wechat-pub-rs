@@ -239,7 +239,10 @@ impl MarkdownParser {
 
         for event in parser {
             match event {
-                Event::Start(Tag::Heading { level: HeadingLevel::H1, .. }) => {
+                Event::Start(Tag::Heading {
+                    level: HeadingLevel::H1,
+                    ..
+                }) => {
                     in_heading = true;
                 }
                 Event::End(TagEnd::Heading(HeadingLevel::H1)) => {
@@ -279,11 +282,8 @@ impl MarkdownParser {
                 }
                 Event::End(TagEnd::Image) => {
                     if in_image {
-                        let image_ref = ImageRef::new(
-                            current_alt.clone(),
-                            current_url.clone(),
-                            current_range,
-                        );
+                        let image_ref =
+                            ImageRef::new(current_alt.clone(), current_url.clone(), current_range);
                         images.push(image_ref);
                         in_image = false;
                     }
@@ -319,11 +319,7 @@ mod tests {
 
     #[test]
     fn test_image_ref_creation() {
-        let img = ImageRef::new(
-            "Alt text".to_string(),
-            "image.jpg".to_string(),
-            (10, 20),
-        );
+        let img = ImageRef::new("Alt text".to_string(), "image.jpg".to_string(), (10, 20));
 
         assert_eq!(img.alt_text, "Alt text");
         assert_eq!(img.original_url, "image.jpg");
@@ -436,7 +432,10 @@ More content here."#;
 
         let mut content = parser.parse(markdown).unwrap();
         let mut url_mapping = HashMap::new();
-        url_mapping.insert("./local.jpg".to_string(), "https://wechat.com/123".to_string());
+        url_mapping.insert(
+            "./local.jpg".to_string(),
+            "https://wechat.com/123".to_string(),
+        );
 
         content.replace_image_urls(&url_mapping).unwrap();
 
@@ -526,7 +525,10 @@ Article content with an image: ![Example](./example.jpg)
         assert_eq!(content.title, Some("Full Example".to_string()));
         assert_eq!(content.author, Some("John Doe".to_string()));
         assert_eq!(content.cover, Some("assets/cover-image.png".to_string()));
-        assert_eq!(content.metadata.get("date"), Some(&"2024-01-01".to_string()));
+        assert_eq!(
+            content.metadata.get("date"),
+            Some(&"2024-01-01".to_string())
+        );
         assert_eq!(content.images.len(), 1);
         assert_eq!(content.images[0].original_url, "./example.jpg");
     }

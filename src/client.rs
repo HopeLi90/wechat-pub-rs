@@ -111,9 +111,7 @@ impl WeChatClient {
         let app_secret = app_secret.into();
 
         // Validate credentials format
-        utils::validate_app_credentials(&app_id, &app_secret).map_err(|e| {
-            WeChatError::config_error(e)
-        })?;
+        utils::validate_app_credentials(&app_id, &app_secret).map_err(WeChatError::config_error)?;
 
         // Create HTTP client
         let http_client = Arc::new(WeChatHttpClient::new()?);
@@ -126,15 +124,10 @@ impl WeChatClient {
         ));
 
         // Create service components
-        let image_uploader = ImageUploader::new(
-            Arc::clone(&http_client),
-            Arc::clone(&token_manager),
-        );
+        let image_uploader =
+            ImageUploader::new(Arc::clone(&http_client), Arc::clone(&token_manager));
 
-        let draft_manager = DraftManager::new(
-            Arc::clone(&http_client),
-            Arc::clone(&token_manager),
-        );
+        let draft_manager = DraftManager::new(Arc::clone(&http_client), Arc::clone(&token_manager));
 
         let markdown_parser = MarkdownParser::new();
         let theme_manager = ThemeManager::new();
@@ -193,8 +186,7 @@ impl WeChatClient {
         let mut content = self.parse_markdown_file(markdown_path).await?;
 
         // Step 2: Upload images concurrently
-        let base_dir = utils::get_base_directory(markdown_path)
-            .unwrap_or_else(|| Path::new("."));
+        let base_dir = utils::get_base_directory(markdown_path).unwrap_or_else(|| Path::new("."));
 
         let upload_results = self
             .image_uploader
@@ -206,7 +198,9 @@ impl WeChatClient {
         content.replace_image_urls(&url_mapping)?;
 
         // Step 4: Upload cover image (from options or frontmatter)
-        let cover_path = options.cover_image.as_ref()
+        let cover_path = options
+            .cover_image
+            .as_ref()
             .or(content.cover.as_ref())
             .expect("Cover image should be available from validation");
 
@@ -250,12 +244,15 @@ impl WeChatClient {
         let markdown_path = Path::new(markdown_path);
         self.validate_upload_input(markdown_path, &options).await?;
 
-        log::info!("Updating draft {} with: {}", media_id, markdown_path.display());
+        log::info!(
+            "Updating draft {} with: {}",
+            media_id,
+            markdown_path.display()
+        );
 
         // Parse and process content (same as upload)
         let mut content = self.parse_markdown_file(markdown_path).await?;
-        let base_dir = utils::get_base_directory(markdown_path)
-            .unwrap_or_else(|| Path::new("."));
+        let base_dir = utils::get_base_directory(markdown_path).unwrap_or_else(|| Path::new("."));
 
         let upload_results = self
             .image_uploader
@@ -265,7 +262,9 @@ impl WeChatClient {
         let url_mapping = self.draft_manager.create_url_mapping(&upload_results);
         content.replace_image_urls(&url_mapping)?;
 
-        let cover_path = options.cover_image.as_ref()
+        let cover_path = options
+            .cover_image
+            .as_ref()
             .or(content.cover.as_ref())
             .expect("Cover image should be available from validation");
 
@@ -315,8 +314,7 @@ impl WeChatClient {
             (0, 0),
         );
 
-        let base_dir = utils::get_base_directory(image_path)
-            .unwrap_or_else(|| Path::new("."));
+        let base_dir = utils::get_base_directory(image_path).unwrap_or_else(|| Path::new("."));
 
         let results = self
             .image_uploader
@@ -399,8 +397,8 @@ impl WeChatClient {
 
         // Validate cover image from options if specified
         if let Some(cover_path) = &options.cover_image {
-            let base_dir = utils::get_base_directory(markdown_path)
-                .unwrap_or_else(|| Path::new("."));
+            let base_dir =
+                utils::get_base_directory(markdown_path).unwrap_or_else(|| Path::new("."));
 
             let resolved_cover_path = if Path::new(cover_path).is_absolute() {
                 PathBuf::from(cover_path)
@@ -423,8 +421,8 @@ impl WeChatClient {
 
         // Validate cover image from frontmatter if specified
         if let Some(cover_path) = &content.cover {
-            let base_dir = utils::get_base_directory(markdown_path)
-                .unwrap_or_else(|| Path::new("."));
+            let base_dir =
+                utils::get_base_directory(markdown_path).unwrap_or_else(|| Path::new("."));
 
             let resolved_cover_path = if Path::new(cover_path).is_absolute() {
                 PathBuf::from(cover_path)
@@ -460,9 +458,7 @@ impl WeChatClient {
         };
 
         // Upload cover image as permanent material
-        self.image_uploader
-            .upload_cover_material(&cover_path)
-            .await
+        self.image_uploader.upload_cover_material(&cover_path).await
     }
 
     fn render_content(&self, content: &MarkdownContent, options: &UploadOptions) -> Result<String> {
@@ -584,7 +580,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_creation_with_valid_credentials() {
-        let result = WeChatClient::new("wx1234567890123456", "12345678901234567890123456789012").await;
+        let result =
+            WeChatClient::new("wx1234567890123456", "12345678901234567890123456789012").await;
         assert!(result.is_ok());
 
         let client = result.unwrap();
@@ -599,7 +596,9 @@ mod tests {
     async fn test_cover_requirement_validation() {
         use tempfile::Builder;
 
-        let client = WeChatClient::new("wx1234567890123456", "12345678901234567890123456789012").await.unwrap();
+        let client = WeChatClient::new("wx1234567890123456", "12345678901234567890123456789012")
+            .await
+            .unwrap();
 
         // Test 1: Markdown without cover in frontmatter or options should fail
         let temp_file = Builder::new().suffix(".md").tempfile().unwrap();
@@ -611,10 +610,14 @@ author: Test Author
 # Content
 Some article content here.
 "#;
-        tokio::fs::write(temp_file.path(), markdown_without_cover).await.unwrap();
+        tokio::fs::write(temp_file.path(), markdown_without_cover)
+            .await
+            .unwrap();
 
         let options = UploadOptions::with_theme("default");
-        let result = client.validate_upload_input(temp_file.path(), &options).await;
+        let result = client
+            .validate_upload_input(temp_file.path(), &options)
+            .await;
         assert!(result.is_err());
         let error_msg = result.unwrap_err().to_string();
         assert!(error_msg.contains("Cover image is required"));
@@ -630,10 +633,14 @@ cover: ../fixtures/images/02-cover.png
 # Content
 Some article content here.
 "#;
-        tokio::fs::write(temp_file2.path(), markdown_with_cover).await.unwrap();
+        tokio::fs::write(temp_file2.path(), markdown_with_cover)
+            .await
+            .unwrap();
 
         let options2 = UploadOptions::with_theme("default");
-        let result2 = client.validate_upload_input(temp_file2.path(), &options2).await;
+        let result2 = client
+            .validate_upload_input(temp_file2.path(), &options2)
+            .await;
         // This will fail because the cover file doesn't exist, but it should fail with file not found, not cover required
         assert!(result2.is_err());
         assert!(result2.unwrap_err().to_string().contains("02-cover.png"));
@@ -648,10 +655,15 @@ author: Test Author
 # Content
 Some article content here.
 "#;
-        tokio::fs::write(temp_file3.path(), markdown_no_frontmatter_cover).await.unwrap();
+        tokio::fs::write(temp_file3.path(), markdown_no_frontmatter_cover)
+            .await
+            .unwrap();
 
-        let options3 = UploadOptions::with_theme("default").cover_image("../fixtures/images/02-cover.png");
-        let result3 = client.validate_upload_input(temp_file3.path(), &options3).await;
+        let options3 =
+            UploadOptions::with_theme("default").cover_image("../fixtures/images/02-cover.png");
+        let result3 = client
+            .validate_upload_input(temp_file3.path(), &options3)
+            .await;
         // This will fail because the cover file doesn't exist, but should not be the "cover required" error
         assert!(result3.is_err());
         assert!(result3.unwrap_err().to_string().contains("02-cover.png"));
@@ -659,18 +671,31 @@ Some article content here.
 
     #[tokio::test]
     async fn test_fixture_file_parsing() {
-        let client = WeChatClient::new("wx1234567890123456", "12345678901234567890123456789012").await.unwrap();
+        let client = WeChatClient::new("wx1234567890123456", "12345678901234567890123456789012")
+            .await
+            .unwrap();
 
         // Parse the fixture file to verify it has the expected frontmatter
-        let content = client.parse_markdown_file(std::path::Path::new("fixtures/example.md")).await.unwrap();
+        let content = client
+            .parse_markdown_file(std::path::Path::new("fixtures/example.md"))
+            .await
+            .unwrap();
 
-        assert_eq!(content.title, Some("和 Gemini 关于第一性原理的对话".to_string()));
+        assert_eq!(
+            content.title,
+            Some("和 Gemini 关于第一性原理的对话".to_string())
+        );
         assert_eq!(content.author, Some("陈小天".to_string()));
         assert_eq!(content.cover, Some("images/02-cover.png".to_string()));
 
         // Verify that validation works with the fixture (should pass because cover exists in frontmatter and file exists)
         let options = UploadOptions::with_theme("default");
-        let result = client.validate_upload_input(std::path::Path::new("fixtures/example.md"), &options).await;
-        assert!(result.is_ok(), "Validation should pass for fixture file with cover in frontmatter");
+        let result = client
+            .validate_upload_input(std::path::Path::new("fixtures/example.md"), &options)
+            .await;
+        assert!(
+            result.is_ok(),
+            "Validation should pass for fixture file with cover in frontmatter"
+        );
     }
 }
