@@ -502,8 +502,12 @@ impl WeChatClient {
             metadata.insert("author".to_string(), author.clone());
         }
 
-        self.theme_manager
-            .render(&content.content, theme, &metadata)
+        self.theme_manager.render(
+            &content.content,
+            theme,
+            content.code.as_deref().unwrap_or("vscode"),
+            &metadata,
+        )
     }
 
     fn create_article(

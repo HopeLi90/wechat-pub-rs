@@ -1,7 +1,7 @@
 //! Markdown parsing and image extraction module.
 
 use crate::error::{Result, WeChatError};
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use comrak::{nodes::NodeValue, Arena, ComrakOptions};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -51,6 +51,8 @@ pub struct MarkdownContent {
     pub cover: Option<String>,
     /// Theme name (from front matter)
     pub theme: Option<String>,
+    /// Code syntax highlighting theme (from front matter)
+    pub code: Option<String>,
     /// Main content (markdown text)
     pub content: String,
     /// List of image references
@@ -86,41 +88,77 @@ impl MarkdownContent {
 
     /// Gets a summary of the content (first paragraph or up to 200 characters).
     pub fn get_summary(&self, max_length: usize) -> String {
-        let parser = Parser::new_ext(&self.content, Options::all());
+        let arena = Arena::new();
+        let options = ComrakOptions::default();
+        let root = comrak::parse_document(&arena, &self.content, &options);
         let mut summary = String::new();
-        let mut in_paragraph = false;
         let mut text_length = 0;
+        let mut found_paragraph = false;
 
-        for event in parser {
-            match event {
-                Event::Start(Tag::Paragraph) => {
-                    in_paragraph = true;
-                }
-                Event::End(TagEnd::Paragraph) => {
-                    if in_paragraph && !summary.is_empty() {
-                        break; // Found first paragraph
+        fn collect_text<'a>(
+            node: &'a comrak::nodes::AstNode<'a>,
+            summary: &mut String,
+            max_length: usize,
+            text_length: &mut usize,
+            found_paragraph: &mut bool,
+        ) -> bool {
+            match &node.data.borrow().value {
+                NodeValue::Paragraph => {
+                    if *found_paragraph {
+                        // We already found a paragraph, stop here
+                        return true;
                     }
-                    in_paragraph = false;
+                    *found_paragraph = true;
+                    for child in node.children() {
+                        if collect_text(child, summary, max_length, text_length, found_paragraph) {
+                            break;
+                        }
+                        if *text_length >= max_length {
+                            break;
+                        }
+                    }
+                    if !summary.is_empty() {
+                        return true; // Found first paragraph content, stop processing
+                    }
+                    *found_paragraph = false;
                 }
-                Event::Text(text) => {
-                    if in_paragraph && text_length < max_length {
-                        let remaining = max_length - text_length;
+                NodeValue::Text(text) => {
+                    if *found_paragraph && *text_length < max_length {
+                        let remaining = max_length - *text_length;
                         if text.len() <= remaining {
-                            summary.push_str(&text);
-                            text_length += text.len();
+                            summary.push_str(text);
+                            *text_length += text.len();
                         } else {
                             summary.push_str(&text[..remaining]);
                             summary.push_str("...");
+                            *text_length = max_length;
+                        }
+                    }
+                }
+                _ => {
+                    for child in node.children() {
+                        if collect_text(child, summary, max_length, text_length, found_paragraph) {
+                            return true;
+                        }
+                        if *text_length >= max_length {
                             break;
                         }
                     }
                 }
-                _ => {}
             }
+            false
         }
 
+        collect_text(
+            root,
+            &mut summary,
+            max_length,
+            &mut text_length,
+            &mut found_paragraph,
+        );
+
         if summary.is_empty() {
-            // Fallback: take first 200 characters of content
+            // Fallback: take first characters of content
             let content_text = self.extract_plain_text();
             if content_text.len() > max_length {
                 format!("{}...", &content_text[..max_length])
@@ -134,16 +172,26 @@ impl MarkdownContent {
 
     /// Extracts plain text from markdown content.
     pub fn extract_plain_text(&self) -> String {
-        let parser = Parser::new_ext(&self.content, Options::all());
+        let arena = Arena::new();
+        let options = ComrakOptions::default();
+        let root = comrak::parse_document(&arena, &self.content, &options);
         let mut text = String::new();
 
-        for event in parser {
-            if let Event::Text(content) = event {
-                text.push_str(&content);
-                text.push(' ');
+        fn collect_text<'a>(node: &'a comrak::nodes::AstNode<'a>, text: &mut String) {
+            match &node.data.borrow().value {
+                NodeValue::Text(content) => {
+                    text.push_str(content);
+                    text.push(' ');
+                }
+                _ => {
+                    for child in node.children() {
+                        collect_text(child, text);
+                    }
+                }
             }
         }
 
+        collect_text(root, &mut text);
         text.trim().to_string()
     }
 }
@@ -151,18 +199,18 @@ impl MarkdownContent {
 /// Markdown parser with image extraction capabilities.
 #[derive(Debug)]
 pub struct MarkdownParser {
-    options: Options,
+    options: ComrakOptions<'static>,
 }
 
 impl MarkdownParser {
     /// Creates a new markdown parser with default options.
     pub fn new() -> Self {
-        let mut options = Options::empty();
-        options.insert(Options::ENABLE_STRIKETHROUGH);
-        options.insert(Options::ENABLE_TABLES);
-        options.insert(Options::ENABLE_FOOTNOTES);
-        options.insert(Options::ENABLE_TASKLISTS);
-        options.insert(Options::ENABLE_SMART_PUNCTUATION);
+        let mut options = ComrakOptions::<'static>::default();
+        options.extension.strikethrough = true;
+        options.extension.table = true;
+        options.extension.footnotes = true;
+        options.extension.tasklist = true;
+        options.parse.smart = true;
 
         Self { options }
     }
@@ -174,6 +222,7 @@ impl MarkdownParser {
         let author = metadata.get("author").cloned();
         let cover = metadata.get("cover").cloned();
         let theme = metadata.get("theme").cloned();
+        let code = metadata.get("code").cloned();
         let images = self.extract_images(&content_without_frontmatter)?;
 
         Ok(MarkdownContent {
@@ -181,6 +230,7 @@ impl MarkdownParser {
             author,
             cover,
             theme,
+            code,
             content: content_without_frontmatter,
             images,
             metadata,
@@ -237,75 +287,109 @@ impl MarkdownParser {
         }
 
         // Look for first # heading
-        let parser = Parser::new_ext(content, self.options);
-        let mut in_heading = false;
-        let mut title = String::new();
+        let arena = Arena::new();
+        let root = comrak::parse_document(&arena, content, &self.options);
 
-        for event in parser {
-            match event {
-                Event::Start(Tag::Heading {
-                    level: HeadingLevel::H1,
-                    ..
-                }) => {
-                    in_heading = true;
-                }
-                Event::End(TagEnd::Heading(HeadingLevel::H1)) => {
-                    if in_heading && !title.is_empty() {
-                        return Some(title.trim().to_string());
+        fn find_h1_title<'a>(node: &'a comrak::nodes::AstNode<'a>) -> Option<String> {
+            match &node.data.borrow().value {
+                NodeValue::Heading(heading) if heading.level == 1 => {
+                    let mut title = String::new();
+                    fn collect_heading_text<'a>(
+                        node: &'a comrak::nodes::AstNode<'a>,
+                        title: &mut String,
+                    ) {
+                        match &node.data.borrow().value {
+                            NodeValue::Text(text) => title.push_str(text),
+                            _ => {
+                                for child in node.children() {
+                                    collect_heading_text(child, title);
+                                }
+                            }
+                        }
                     }
-                    in_heading = false;
-                }
-                Event::Text(text) => {
-                    if in_heading {
-                        title.push_str(&text);
+
+                    for child in node.children() {
+                        collect_heading_text(child, &mut title);
+                    }
+
+                    if !title.trim().is_empty() {
+                        Some(title.trim().to_string())
+                    } else {
+                        None
                     }
                 }
-                _ => {}
+                _ => {
+                    for child in node.children() {
+                        if let Some(title) = find_h1_title(child) {
+                            return Some(title);
+                        }
+                    }
+                    None
+                }
             }
         }
 
-        None
+        find_h1_title(root)
     }
 
     /// Extracts image references from markdown content.
     fn extract_images(&self, content: &str) -> Result<Vec<ImageRef>> {
-        let parser = Parser::new_ext(content, self.options);
+        let arena = Arena::new();
+        let root = comrak::parse_document(&arena, content, &self.options);
         let mut images = Vec::new();
-        let mut current_alt = String::new();
-        let mut in_image = false;
-        let mut current_url = String::new();
-        let mut current_range = (0, 0);
 
-        for (event, range) in parser.into_offset_iter() {
-            match &event {
-                Event::Start(Tag::Image { dest_url, .. }) => {
-                    in_image = true;
-                    current_alt.clear();
-                    current_url = dest_url.to_string();
-                    current_range = (range.start, range.end);
+        fn extract_images_recursive<'a>(
+            node: &'a comrak::nodes::AstNode<'a>,
+            images: &mut Vec<ImageRef>,
+            source: &str,
+        ) {
+            match &node.data.borrow().value {
+                NodeValue::Image(link) => {
+                    let mut alt_text = String::new();
+
+                    // Collect alt text from children
+                    fn collect_alt_text<'a>(
+                        node: &'a comrak::nodes::AstNode<'a>,
+                        alt: &mut String,
+                    ) {
+                        match &node.data.borrow().value {
+                            NodeValue::Text(text) => alt.push_str(text),
+                            NodeValue::Code(code) => alt.push_str(&code.literal),
+                            _ => {
+                                for child in node.children() {
+                                    collect_alt_text(child, alt);
+                                }
+                            }
+                        }
+                    }
+
+                    for child in node.children() {
+                        collect_alt_text(child, &mut alt_text);
+                    }
+
+                    let url = link.url.clone();
+
+                    // Calculate approximate position based on content search
+                    let position =
+                        if let Some(start) = source.find(&format!("![{alt_text}]({url})")) {
+                            let end = start + format!("![{alt_text}]({url})").len();
+                            (start, end)
+                        } else {
+                            (0, 0) // Fallback if exact match not found
+                        };
+
+                    let image_ref = ImageRef::new(alt_text, url, position);
+                    images.push(image_ref);
                 }
-                Event::End(TagEnd::Image) => {
-                    if in_image {
-                        let image_ref =
-                            ImageRef::new(current_alt.clone(), current_url.clone(), current_range);
-                        images.push(image_ref);
-                        in_image = false;
+                _ => {
+                    for child in node.children() {
+                        extract_images_recursive(child, images, source);
                     }
                 }
-                Event::Text(text) => {
-                    if in_image {
-                        current_alt.push_str(text);
-                    }
-                }
-                Event::Code(text) => {
-                    if in_image {
-                        current_alt.push_str(text);
-                    }
-                }
-                _ => {}
             }
         }
 
+        extract_images_recursive(root, &mut images, content);
         Ok(images)
     }
 }
@@ -425,6 +509,7 @@ More content here."#;
         assert_eq!(content.author, Some("Jane Doe".to_string()));
         assert_eq!(content.cover, Some("images/cover.jpg".to_string()));
         assert_eq!(content.theme, None);
+        assert_eq!(content.code, None);
         assert_eq!(content.images.len(), 1);
         assert_eq!(content.images[0].alt_text, "Test");
         assert_eq!(content.images[0].original_url, "./test.jpg");
@@ -534,6 +619,29 @@ title: Test Article
     }
 
     #[test]
+    fn test_code_theme_extraction_from_frontmatter() {
+        let parser = MarkdownParser::new();
+        let markdown_with_code = r#"---
+title: Test Article
+code: solarized-light
+---
+
+# Content"#;
+
+        let content = parser.parse(markdown_with_code).unwrap();
+        assert_eq!(content.code, Some("solarized-light".to_string()));
+
+        let markdown_without_code = r#"---
+title: Test Article
+---
+
+# Content"#;
+
+        let content = parser.parse(markdown_without_code).unwrap();
+        assert_eq!(content.code, None);
+    }
+
+    #[test]
     fn test_markdown_parsing_with_all_frontmatter() {
         let parser = MarkdownParser::new();
         let markdown = r#"---
@@ -554,6 +662,7 @@ Article content with an image: ![Example](./example.jpg)
         assert_eq!(content.author, Some("John Doe".to_string()));
         assert_eq!(content.cover, Some("assets/cover-image.png".to_string()));
         assert_eq!(content.theme, None);
+        assert_eq!(content.code, None);
         assert_eq!(
             content.metadata.get("date"),
             Some(&"2024-01-01".to_string())

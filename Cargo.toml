@@ -1,16 +1,16 @@
 [package]
 name = "wechat-pub-rs"
-version = "0.1.0"
-authors = ["Your Name <YourName@yourdomain.com>"]
-edition = "2021"
+version = "0.2.0"
+authors = ["tyr.chen@gmail.com>"]
+edition = "2024"
 license = "MIT"
-documentation = "https://docs.rs/"
-repository = "https://github.com/TODO"
-homepage = "https://github.com/TODO"
+documentation = "https://docs.rs/wechat-pub-rs"
+repository = "https://github.com/tyrchen/wechat-pub-rs"
+homepage = "https://github.com/tyrchen/wechat-pub-rs"
 description = "A simple, high-performance WeChat Official Account Rust SDK for uploading articles and managing drafts"
 readme = "README.md"
-categories = ["api-bindings", "development-tools", "web-programming"]
-keywords = ["wechat", "weixin", "official-account", "sdk", "api"]
+categories = ["development-tools"]
+keywords = ["wechat", "weixin", "official-account", "sdk"]
 
 [dependencies]
 # HTTP client
@@ -34,8 +34,8 @@ thiserror = "2.0"
 anyhow = "1.0"
 
 # Markdown processing
-pulldown-cmark = "0.13"
-pulldown-cmark-to-cmark = "21.0"
+comrak = "0.40"
+syntect = "5.2"
 
 # Template engine
 askama = "0.14"

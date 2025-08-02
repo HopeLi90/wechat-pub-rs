@@ -2,9 +2,31 @@
 
 use crate::error::{Result, WeChatError};
 use askama::Template;
-use pulldown_cmark::{html, Options, Parser};
+use comrak::{
+    markdown_to_html_with_plugins, plugins::syntect::SyntectAdapter, ComrakOptions, ComrakPlugins,
+};
 use std::collections::HashMap;
-use std::path::Path;
+
+// Embed all theme CSS files at compile time
+const DEFAULT_CSS: &str = include_str!("../themes/default.css");
+const LAPIS_CSS: &str = include_str!("../themes/lapis.css");
+const MAIZE_CSS: &str = include_str!("../themes/maize.css");
+const ORANGEHEART_CSS: &str = include_str!("../themes/orangeheart.css");
+const PHYCAT_CSS: &str = include_str!("../themes/phycat.css");
+const PIE_CSS: &str = include_str!("../themes/pie.css");
+const PURPLE_CSS: &str = include_str!("../themes/purple.css");
+const RAINBOW_CSS: &str = include_str!("../themes/rainbow.css");
+
+// Embed all highlight CSS files at compile time
+const ATOM_ONE_DARK_CSS: &str = include_str!("../themes/highlight/atom-one-dark.min.css");
+const ATOM_ONE_LIGHT_CSS: &str = include_str!("../themes/highlight/atom-one-light.min.css");
+const DRACULA_CSS: &str = include_str!("../themes/highlight/dracula.min.css");
+const GITHUB_DARK_CSS: &str = include_str!("../themes/highlight/github-dark.min.css");
+const GITHUB_CSS: &str = include_str!("../themes/highlight/github.min.css");
+const MONOKAI_CSS: &str = include_str!("../themes/highlight/monokai.min.css");
+const SOLARIZED_DARK_CSS: &str = include_str!("../themes/highlight/solarized-dark.min.css");
+const SOLARIZED_LIGHT_CSS: &str = include_str!("../themes/highlight/solarized-light.min.css");
+const XCODE_CSS: &str = include_str!("../themes/highlight/xcode.min.css");
 
 /// Built-in theme options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,21 +108,37 @@ pub struct ArticleTemplate {
     pub author: String,
     pub content: String,
     pub theme_css: String,
+    pub highlight_css: String,
 }
 
 /// Theme template containing CSS for styling.
 #[derive(Debug, Clone)]
 pub struct ThemeTemplate {
     /// CSS styles for the theme
-    pub css: String,
+    pub theme_css: String,
+    /// CSS styles for the highlight theme
+    pub code_css: String,
     /// Theme name
     pub name: String,
 }
 
 impl ThemeTemplate {
     /// Creates a new theme template.
-    pub fn new(css: String, name: String) -> Self {
-        Self { css, name }
+    pub fn new(theme_css: String, code_css: String, name: String) -> Self {
+        Self {
+            theme_css,
+            code_css,
+            name,
+        }
+    }
+
+    /// Creates a new theme template with static CSS references.
+    pub fn from_static(theme_css: &'static str, code_css: &'static str, name: String) -> Self {
+        Self {
+            theme_css: theme_css.to_string(),
+            code_css: code_css.to_string(),
+            name,
+        }
     }
 
     /// Renders content using this theme with inline styles for WeChat.
@@ -111,7 +149,8 @@ impl ThemeTemplate {
             description: metadata.get("description").cloned().unwrap_or_default(),
             author: metadata.get("author").cloned().unwrap_or_default(),
             content: content.to_string(),
-            theme_css: self.css.clone(),
+            theme_css: self.theme_css.clone(),
+            highlight_css: self.code_css.clone(),
         };
 
         // Render the template to HTML
@@ -131,7 +170,8 @@ impl ThemeTemplate {
 #[derive(Debug)]
 pub struct ThemeManager {
     templates: HashMap<String, ThemeTemplate>,
-    markdown_options: Options,
+    highlight_css: HashMap<String, String>,
+    markdown_options: ComrakOptions<'static>,
 }
 
 impl ThemeManager {
@@ -139,25 +179,27 @@ impl ThemeManager {
     pub fn new() -> Self {
         let mut manager = Self {
             templates: HashMap::new(),
+            highlight_css: HashMap::new(),
             markdown_options: Self::create_markdown_options(),
         };
 
         manager.load_builtin_themes();
+        manager.load_highlight_themes();
         manager
     }
 
     /// Creates markdown parsing options.
-    fn create_markdown_options() -> Options {
-        let mut options = Options::empty();
-        options.insert(Options::ENABLE_STRIKETHROUGH);
-        options.insert(Options::ENABLE_TABLES);
-        options.insert(Options::ENABLE_FOOTNOTES);
-        options.insert(Options::ENABLE_TASKLISTS);
-        options.insert(Options::ENABLE_SMART_PUNCTUATION);
+    fn create_markdown_options() -> ComrakOptions<'static> {
+        let mut options = ComrakOptions::default();
+        options.extension.strikethrough = true;
+        options.extension.table = true;
+        options.extension.footnotes = true;
+        options.extension.tasklist = true;
+        options.parse.smart = true;
         options
     }
 
-    /// Loads all built-in themes.
+    /// Loads all built-in themes from embedded CSS.
     fn load_builtin_themes(&mut self) {
         for theme in BuiltinTheme::all() {
             let template = self.create_builtin_theme(theme);
@@ -165,43 +207,61 @@ impl ThemeManager {
         }
     }
 
-    /// Loads theme CSS from file.
-    pub fn load_theme_from_file(&mut self, theme_name: &str, css_path: &Path) -> Result<()> {
-        let css = std::fs::read_to_string(css_path).map_err(|e| {
-            WeChatError::file_error(
-                css_path.display().to_string(),
-                format!("Failed to read theme CSS: {e}"),
-            )
-        })?;
+    /// Loads all highlight themes from embedded CSS.
+    fn load_highlight_themes(&mut self) {
+        // Load all embedded highlight themes
+        self.highlight_css
+            .insert("atom-one-dark".to_string(), ATOM_ONE_DARK_CSS.to_string());
+        self.highlight_css
+            .insert("atom-one-light".to_string(), ATOM_ONE_LIGHT_CSS.to_string());
+        self.highlight_css
+            .insert("dracula".to_string(), DRACULA_CSS.to_string());
+        self.highlight_css
+            .insert("github-dark".to_string(), GITHUB_DARK_CSS.to_string());
+        self.highlight_css
+            .insert("github".to_string(), GITHUB_CSS.to_string());
+        self.highlight_css
+            .insert("monokai".to_string(), MONOKAI_CSS.to_string());
+        self.highlight_css
+            .insert("solarized-dark".to_string(), SOLARIZED_DARK_CSS.to_string());
+        self.highlight_css.insert(
+            "solarized-light".to_string(),
+            SOLARIZED_LIGHT_CSS.to_string(),
+        );
+        self.highlight_css
+            .insert("xcode".to_string(), XCODE_CSS.to_string());
 
-        let template = ThemeTemplate::new(css, theme_name.to_string());
-        self.templates.insert(theme_name.to_string(), template);
-        Ok(())
+        // Add vscode as an alias for github
+        self.highlight_css
+            .insert("vscode".to_string(), GITHUB_CSS.to_string());
     }
 
-    /// Creates a built-in theme template.
+    /// Creates a built-in theme template from embedded CSS.
     fn create_builtin_theme(&self, theme: BuiltinTheme) -> ThemeTemplate {
-        let css = self.load_builtin_theme_css(theme);
-        ThemeTemplate::new(css, theme.as_str().to_string())
+        let css = self.get_embedded_theme_css(theme);
+        ThemeTemplate::from_static(css, "", theme.as_str().to_string())
     }
 
-    /// Loads CSS content for built-in themes from the themes directory.
-    fn load_builtin_theme_css(&self, theme: BuiltinTheme) -> String {
-        let theme_path = format!("themes/{}.css", theme.as_str());
-
-        if Path::new(&theme_path).exists() {
-            std::fs::read_to_string(&theme_path).unwrap()
-        } else {
-            log::warn!("Could not load theme file: {theme_path}, using default CSS");
-            std::fs::read_to_string("themes/default.css").unwrap()
+    /// Gets embedded CSS content for built-in themes.
+    fn get_embedded_theme_css(&self, theme: BuiltinTheme) -> &'static str {
+        match theme {
+            BuiltinTheme::Default => DEFAULT_CSS,
+            BuiltinTheme::Lapis => LAPIS_CSS,
+            BuiltinTheme::Maize => MAIZE_CSS,
+            BuiltinTheme::OrangeHeart => ORANGEHEART_CSS,
+            BuiltinTheme::PhyCat => PHYCAT_CSS,
+            BuiltinTheme::Pie => PIE_CSS,
+            BuiltinTheme::Purple => PURPLE_CSS,
+            BuiltinTheme::Rainbow => RAINBOW_CSS,
         }
     }
 
-    /// Renders markdown content with the specified theme.
+    /// Renders markdown content with the specified theme and code highlight theme.
     pub fn render(
         &self,
         markdown_content: &str,
         theme_name: &str,
+        code_theme: &str,
         metadata: &HashMap<String, String>,
     ) -> Result<String> {
         let template =
@@ -211,13 +271,43 @@ impl ThemeManager {
                     theme: theme_name.to_string(),
                 })?;
 
-        // Convert markdown to HTML
-        let parser = Parser::new_ext(markdown_content, self.markdown_options);
-        let mut html_content = String::new();
-        html::push_html(&mut html_content, parser);
+        // Get highlight CSS, defaulting to "vscode" if not specified or not found
+        let highlight_css = self.get_highlight_css(code_theme);
+
+        // Create syntect adapter for syntax highlighting
+        // Map our CSS theme names to syntect theme names
+        let syntect_theme_name = match code_theme {
+            "solarized-light" => Some("Solarized (light)"),
+            "solarized-dark" => Some("Solarized (dark)"),
+            "monokai" => Some("Monokai"),
+            "github" | "vscode" => Some("InspiredGitHub"),
+            "github-dark" => Some("base16-ocean.dark"),
+            "atom-one-dark" => Some("base16-ocean.dark"),
+            "atom-one-light" => Some("InspiredGitHub"),
+            "dracula" => Some("base16-ocean.dark"),
+            "xcode" => Some("InspiredGitHub"),
+            _ => None, // Use default theme
+        };
+
+        let adapter = SyntectAdapter::new(syntect_theme_name);
+
+        // Set up comrak plugins with syntect adapter
+        let mut plugins = ComrakPlugins::default();
+        plugins.render.codefence_syntax_highlighter = Some(&adapter);
+
+        // Convert markdown to HTML using comrak with syntect
+        let html_content =
+            markdown_to_html_with_plugins(markdown_content, &self.markdown_options, &plugins);
+
+        // Create a new template with the highlight CSS
+        let template_with_highlight = ThemeTemplate {
+            theme_css: template.theme_css.clone(),
+            code_css: highlight_css,
+            name: template.name.clone(),
+        };
 
         // Apply theme template
-        template.render(&html_content, metadata)
+        template_with_highlight.render(&html_content, metadata)
     }
 
     /// Adds a custom theme.
@@ -233,6 +323,17 @@ impl ThemeManager {
     /// Checks if a theme exists.
     pub fn has_theme(&self, name: &str) -> bool {
         self.templates.contains_key(name)
+    }
+
+    /// Gets highlight CSS for a given theme, falling back to default if not found.
+    fn get_highlight_css(&self, theme: &str) -> String {
+        self.highlight_css.get(theme).cloned().unwrap_or_else(|| {
+            log::warn!("Highlight theme '{theme}' not found, falling back to 'github'");
+            self.highlight_css
+                .get("github")
+                .cloned()
+                .unwrap_or_default()
+        })
     }
 }
 
@@ -303,7 +404,7 @@ mod tests {
         metadata.insert("title".to_string(), "Test Article".to_string());
         metadata.insert("author".to_string(), "Test Author".to_string());
 
-        let result = manager.render(markdown, "default", &metadata);
+        let result = manager.render(markdown, "default", "vscode", &metadata);
         assert!(result.is_ok());
 
         let html = result.unwrap();
@@ -311,14 +412,13 @@ mod tests {
         assert!(html.contains("Test Title"));
         assert!(html.contains("<strong"));
         assert!(html.contains("bold"));
-        assert!(html.contains("id=\"wenyan\""));
-        assert!(html.contains("data-provider=\"WenYan\""));
+        assert!(html.contains("id=\"wepub\""));
     }
 
     #[test]
     fn test_nonexistent_theme() {
         let manager = ThemeManager::new();
-        let result = manager.render("# Test", "nonexistent", &HashMap::new());
+        let result = manager.render("# Test", "nonexistent", "vscode", &HashMap::new());
 
         assert!(result.is_err());
         if let Err(WeChatError::ThemeNotFound { theme }) = result {
@@ -332,25 +432,55 @@ mod tests {
     fn test_custom_theme() {
         let mut manager = ThemeManager::new();
 
-        let custom_template =
-            ThemeTemplate::new("#wepub { color: red; }".to_string(), "custom".to_string());
+        let custom_template = ThemeTemplate::new(
+            "#wepub { color: red; }".to_string(),
+            String::new(),
+            "custom".to_string(),
+        );
 
         manager.add_theme("custom".to_string(), custom_template);
         assert!(manager.has_theme("custom"));
 
-        let result = manager.render("# Test", "custom", &HashMap::new());
+        let result = manager.render("# Test", "custom", "vscode", &HashMap::new());
         assert!(result.is_ok());
 
         let html = result.unwrap();
         assert!(html.contains("style="));
         assert!(html.contains("Test"));
-        assert!(html.contains("id=\"wenyan\""));
+        assert!(html.contains("id=\"wepub\""));
+    }
+
+    #[test]
+    fn test_highlight_theme_rendering() {
+        let manager = ThemeManager::new();
+        let markdown = "# Test\n\n```rust\nfn main() {\n    println!(\"Hello, world!\");\n}\n```";
+
+        let mut metadata = HashMap::new();
+        metadata.insert("title".to_string(), "Test Article".to_string());
+        metadata.insert("author".to_string(), "Test Author".to_string());
+
+        // Test with specific highlight theme
+        let result = manager.render(markdown, "default", "solarized-light", &metadata);
+        assert!(result.is_ok());
+
+        let html = result.unwrap();
+        assert!(html.contains("<h1"));
+        assert!(html.contains("Test"));
+        assert!(html.contains("<code"));
+
+        // Test with default highlight theme (None)
+        let result = manager.render(markdown, "default", "vscode", &metadata);
+        assert!(result.is_ok());
+
+        // Test with nonexistent highlight theme (should fallback to github)
+        let result = manager.render(markdown, "default", "nonexistent", &metadata);
+        assert!(result.is_ok());
     }
 
     #[test]
     fn test_template_css_inlining() {
         let css = "#wepub h1 { color: red; font-size: 2em; }";
-        let template = ThemeTemplate::new(css.to_string(), "theme".to_string());
+        let template = ThemeTemplate::new(css.to_string(), String::new(), "theme".to_string());
 
         let mut metadata = HashMap::new();
         metadata.insert("title".to_string(), "My Title".to_string());
@@ -360,8 +490,7 @@ mod tests {
         assert!(result.is_ok());
 
         let html = result.unwrap();
-        assert!(html.contains("id=\"wenyan\""));
-        assert!(html.contains("data-provider=\"WenYan\""));
+        assert!(html.contains("id=\"wepub\""));
         assert!(html.contains("<h1"));
         assert!(html.contains("Content"));
         // Check that CSS was applied as inline styles
