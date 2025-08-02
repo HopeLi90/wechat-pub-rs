@@ -9,3 +9,5 @@ url,将其分别上传,然后替换成上传后的url,然后再根据 theme 把 
 @agent-rust-backend-expert  请根据 @fixtures/example.md 调整 sdk 的实现 - 如果没有特定制定 cover / title
 等信息,那么 md 文件中的 frontmatter 中应该包含相应的信息,如果既没有通过 options,frontmatter 里又没有带
 cover,则报错. 请确保 cargo clippy & cargo test 全部通过,之后 commit 代码
+
+现在,请参考 ./wenyan-mcp 的代码,学习它是怎么生成精美的图文的,然后使用类似的方法,应用 themes 里的模板,生成漂亮的 html 并上传.

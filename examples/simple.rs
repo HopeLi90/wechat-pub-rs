@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     // Check if the file exists
     if tokio::fs::metadata(example_md_path).await.is_ok() {
-        match client.upload(example_md_path, "default").await {
+        match client.upload(example_md_path).await {
             Ok(draft_id) => {
                 println!("✅ Successfully uploaded fixtures/example.md with draft ID: {draft_id}");
             }

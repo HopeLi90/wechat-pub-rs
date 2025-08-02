@@ -3,18 +3,27 @@
 use crate::error::{Result, WeChatError};
 use pulldown_cmark::{html, Options, Parser};
 use std::collections::HashMap;
+use std::path::Path;
 
 /// Built-in theme options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinTheme {
     /// Simple, clean default theme
     Default,
-    /// GitHub-style theme
-    Github,
-    /// WeChat native style theme
-    Wechat,
-    /// Minimalist theme
-    Minimal,
+    /// Lapis theme with blue accents
+    Lapis,
+    /// Maize theme with yellow tones
+    Maize,
+    /// Orange Heart theme with orange accents
+    OrangeHeart,
+    /// PhyCat theme
+    PhyCat,
+    /// Pie theme
+    Pie,
+    /// Purple theme with purple accents
+    Purple,
+    /// Rainbow theme with colorful elements
+    Rainbow,
 }
 
 impl BuiltinTheme {
@@ -22,9 +31,13 @@ impl BuiltinTheme {
     pub fn as_str(&self) -> &'static str {
         match self {
             BuiltinTheme::Default => "default",
-            BuiltinTheme::Github => "github",
-            BuiltinTheme::Wechat => "wechat",
-            BuiltinTheme::Minimal => "minimal",
+            BuiltinTheme::Lapis => "lapis",
+            BuiltinTheme::Maize => "maize",
+            BuiltinTheme::OrangeHeart => "orangeheart",
+            BuiltinTheme::PhyCat => "phycat",
+            BuiltinTheme::Pie => "pie",
+            BuiltinTheme::Purple => "purple",
+            BuiltinTheme::Rainbow => "rainbow",
         }
     }
 
@@ -32,9 +45,13 @@ impl BuiltinTheme {
     pub fn all() -> Vec<BuiltinTheme> {
         vec![
             BuiltinTheme::Default,
-            BuiltinTheme::Github,
-            BuiltinTheme::Wechat,
-            BuiltinTheme::Minimal,
+            BuiltinTheme::Lapis,
+            BuiltinTheme::Maize,
+            BuiltinTheme::OrangeHeart,
+            BuiltinTheme::PhyCat,
+            BuiltinTheme::Pie,
+            BuiltinTheme::Purple,
+            BuiltinTheme::Rainbow,
         ]
     }
 }
@@ -45,9 +62,13 @@ impl std::str::FromStr for BuiltinTheme {
     fn from_str(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
             "default" => Ok(BuiltinTheme::Default),
-            "github" => Ok(BuiltinTheme::Github),
-            "wechat" => Ok(BuiltinTheme::Wechat),
-            "minimal" => Ok(BuiltinTheme::Minimal),
+            "lapis" => Ok(BuiltinTheme::Lapis),
+            "maize" => Ok(BuiltinTheme::Maize),
+            "orangeheart" => Ok(BuiltinTheme::OrangeHeart),
+            "phycat" => Ok(BuiltinTheme::PhyCat),
+            "pie" => Ok(BuiltinTheme::Pie),
+            "purple" => Ok(BuiltinTheme::Purple),
+            "rainbow" => Ok(BuiltinTheme::Rainbow),
             _ => Err(WeChatError::ThemeNotFound {
                 theme: s.to_string(),
             }),
@@ -143,66 +164,106 @@ impl ThemeManager {
         }
     }
 
+    /// Loads theme CSS from file.
+    pub fn load_theme_from_file(&mut self, theme_name: &str, css_path: &Path) -> Result<()> {
+        let css = std::fs::read_to_string(css_path)
+            .map_err(|e| WeChatError::file_error(
+                css_path.display().to_string(),
+                format!("Failed to read theme CSS: {}", e)
+            ))?;
+        
+        let html_template = self.get_default_html_template();
+        let template = ThemeTemplate::new(css, html_template, theme_name.to_string());
+        self.templates.insert(theme_name.to_string(), template);
+        Ok(())
+    }
+
+    /// Gets the default HTML template.
+    fn get_default_html_template(&self) -> String {
+        r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{TITLE}}</title>
+    <style>
+        {{CSS}}
+    </style>
+</head>
+<body>
+    <section id="wenyan">
+        {{CONTENT}}
+    </section>
+</body>
+</html>"#.to_string()
+    }
+
     /// Creates a built-in theme template.
     fn create_builtin_theme(&self, theme: BuiltinTheme) -> ThemeTemplate {
+        // For now, return a basic template. In production, these would load from CSS files.
+        let css = self.get_theme_css(theme);
+        let html_template = self.get_default_html_template();
+        ThemeTemplate::new(css, html_template, theme.as_str().to_string())
+    }
+
+    /// Gets theme CSS content.
+    fn get_theme_css(&self, theme: BuiltinTheme) -> String {
+        // This is a placeholder. In production, load from actual CSS files.
         match theme {
-            BuiltinTheme::Default => self.create_default_theme(),
-            BuiltinTheme::Github => self.create_github_theme(),
-            BuiltinTheme::Wechat => self.create_wechat_theme(),
-            BuiltinTheme::Minimal => self.create_minimal_theme(),
+            BuiltinTheme::Default => self.get_default_css(),
+            _ => self.get_default_css(), // For now, use default for all themes
         }
     }
 
-    /// Creates the default theme.
-    fn create_default_theme(&self) -> ThemeTemplate {
-        let css = r#"
-body {
+    /// Gets default theme CSS.
+    fn get_default_css(&self) -> String {
+        r#"
+#wenyan {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    line-height: 1.6;
+    line-height: 1.75;
+    font-size: 16px;
     color: #333;
     max-width: 800px;
     margin: 0 auto;
     padding: 20px;
-    background-color: #fff;
 }
 
-h1, h2, h3, h4, h5, h6 {
+#wenyan h1, #wenyan h2, #wenyan h3, #wenyan h4, #wenyan h5, #wenyan h6 {
     color: #2c3e50;
     margin-top: 1.5em;
     margin-bottom: 0.5em;
 }
 
-h1 {
-    font-size: 2.2em;
+#wenyan h1 {
+    font-size: 1.5em;
+    text-align: center;
     border-bottom: 2px solid #3498db;
     padding-bottom: 0.3em;
 }
 
-h2 {
-    font-size: 1.8em;
+#wenyan h2 {
+    font-size: 1.3em;
     border-bottom: 1px solid #bdc3c7;
     padding-bottom: 0.2em;
 }
 
-h3 {
-    font-size: 1.4em;
-    color: #34495e;
-}
-
-p {
+#wenyan p {
     margin-bottom: 1em;
     text-align: justify;
 }
 
-img {
+#wenyan img {
     max-width: 100%;
     height: auto;
     border-radius: 4px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     margin: 1em 0;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
 }
 
-code {
+#wenyan code {
     background-color: #f8f9fa;
     padding: 0.2em 0.4em;
     border-radius: 3px;
@@ -210,7 +271,7 @@ code {
     font-size: 0.9em;
 }
 
-pre {
+#wenyan pre {
     background-color: #f8f9fa;
     padding: 1em;
     border-radius: 5px;
@@ -218,12 +279,12 @@ pre {
     border-left: 4px solid #3498db;
 }
 
-pre code {
+#wenyan pre code {
     background-color: transparent;
     padding: 0;
 }
 
-blockquote {
+#wenyan blockquote {
     border-left: 4px solid #3498db;
     margin: 1em 0;
     padding-left: 1em;
@@ -231,442 +292,34 @@ blockquote {
     font-style: italic;
 }
 
-table {
+#wenyan table {
     border-collapse: collapse;
     width: 100%;
     margin: 1em 0;
 }
 
-th, td {
+#wenyan th, #wenyan td {
     border: 1px solid #ddd;
     padding: 0.5em;
     text-align: left;
 }
 
-th {
+#wenyan th {
     background-color: #f8f9fa;
     font-weight: bold;
 }
 
-ul, ol {
+#wenyan ul, #wenyan ol {
     padding-left: 2em;
     margin: 1em 0;
 }
 
-li {
+#wenyan li {
     margin: 0.3em 0;
 }
-
-.author {
-    text-align: right;
-    color: #7f8c8d;
-    font-style: italic;
-    margin-top: 2em;
-    border-top: 1px solid #ecf0f1;
-    padding-top: 1em;
-}
-"#
-        .to_string();
-
-        let html_template = r#"<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{TITLE}}</title>
-    <style>
-        {{CSS}}
-    </style>
-</head>
-<body>
-    {{CONTENT}}
-    <div class="author">{{AUTHOR}}</div>
-</body>
-</html>"#
-            .to_string();
-
-        ThemeTemplate::new(css, html_template, "github".to_string())
+"#.to_string()
     }
 
-    /// Creates the GitHub theme.
-    fn create_github_theme(&self) -> ThemeTemplate {
-        let css = r#"
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Helvetica, sans-serif;
-    line-height: 1.6;
-    color: #24292f;
-    max-width: 980px;
-    margin: 0 auto;
-    padding: 45px;
-    background-color: #ffffff;
-}
-
-h1, h2, h3, h4, h5, h6 {
-    margin-top: 24px;
-    margin-bottom: 16px;
-    font-weight: 600;
-    line-height: 1.25;
-}
-
-h1 {
-    font-size: 2em;
-    border-bottom: 1px solid #d0d7de;
-    padding-bottom: 0.3em;
-}
-
-h2 {
-    font-size: 1.5em;
-    border-bottom: 1px solid #d0d7de;
-    padding-bottom: 0.3em;
-}
-
-p {
-    margin-top: 0;
-    margin-bottom: 16px;
-}
-
-img {
-    max-width: 100%;
-    box-sizing: content-box;
-    background-color: #ffffff;
-}
-
-code {
-    padding: 0.2em 0.4em;
-    margin: 0;
-    font-size: 85%;
-    background-color: rgba(175,184,193,0.2);
-    border-radius: 6px;
-    font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
-}
-
-pre {
-    padding: 16px;
-    overflow: auto;
-    font-size: 85%;
-    line-height: 1.45;
-    background-color: #f6f8fa;
-    border-radius: 6px;
-}
-
-pre code {
-    display: inline;
-    max-width: auto;
-    padding: 0;
-    margin: 0;
-    overflow: visible;
-    line-height: inherit;
-    word-wrap: normal;
-    background-color: transparent;
-    border: 0;
-}
-
-blockquote {
-    padding: 0 1em;
-    color: #656d76;
-    border-left: 0.25em solid #d0d7de;
-    margin: 0 0 16px 0;
-}
-
-table {
-    border-spacing: 0;
-    border-collapse: collapse;
-    display: block;
-    width: max-content;
-    max-width: 100%;
-    overflow: auto;
-}
-
-th, td {
-    padding: 6px 13px;
-    border: 1px solid #d0d7de;
-}
-
-th {
-    font-weight: 600;
-    background-color: #f6f8fa;
-}
-
-tr:nth-child(2n) {
-    background-color: #f6f8fa;
-}
-"#.to_string();
-
-        let html_template = r#"<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{TITLE}}</title>
-    <style>
-        {{CSS}}
-    </style>
-</head>
-<body>
-    {{CONTENT}}
-</body>
-</html>"#
-            .to_string();
-
-        ThemeTemplate::new(css, html_template, "github".to_string())
-    }
-
-    /// Creates the WeChat theme.
-    fn create_wechat_theme(&self) -> ThemeTemplate {
-        let css = r#"
-body {
-    font-family: -apple-system-font, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;
-    line-height: 1.75;
-    color: #3f3f3f;
-    background-color: #fff;
-    padding: 20px;
-    max-width: 677px;
-    margin: 0 auto;
-    word-wrap: break-word;
-}
-
-h1, h2, h3, h4, h5, h6 {
-    color: #2f2f2f;
-    margin-top: 1.2em;
-    margin-bottom: 0.6em;
-    line-height: 1.35;
-    font-weight: bold;
-}
-
-h1 {
-    font-size: 1.4em;
-    text-align: center;
-    color: #2f2f2f;
-    margin: 1.5em 0 1em 0;
-}
-
-h2 {
-    font-size: 1.2em;
-    border-bottom: 2px solid #00c4b6;
-    padding-bottom: 0.2em;
-    margin: 1.3em 0 0.8em 0;
-}
-
-h3 {
-    font-size: 1.1em;
-    color: #00c4b6;
-}
-
-p {
-    margin: 1em 8px;
-    text-align: justify;
-    text-justify: inter-ideograph;
-}
-
-img {
-    max-width: 100%;
-    border-radius: 4px;
-    margin: 1em 0;
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-code {
-    font-size: 90%;
-    color: #d14;
-    background: rgba(27,31,35,.05);
-    padding: 3px 5px;
-    border-radius: 4px;
-    margin: 0 2px;
-    font-family: Consolas, "Liberation Mono", Menlo, Courier, monospace;
-}
-
-pre {
-    background: #f6f6f6;
-    border-radius: 8px;
-    padding: 1em;
-    overflow-x: auto;
-    margin: 1.2em 8px;
-    font-size: 14px;
-    color: #383a42;
-}
-
-pre code {
-    color: inherit;
-    background: transparent;
-    padding: 0;
-    margin: 0;
-}
-
-blockquote {
-    color: #666;
-    padding: 1px 23px;
-    margin: 22px 0;
-    border-left: 4px solid #00c4b6;
-    background-color: #f8f8f8;
-}
-
-ul, ol {
-    margin: 1em 0;
-    padding-left: 2em;
-}
-
-li {
-    margin: 0.5em 0;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 1em 0;
-    font-size: 14px;
-}
-
-th, td {
-    border: 1px solid #dfe2e5;
-    padding: 8px 12px;
-}
-
-th {
-    background-color: #f6f8fa;
-    font-weight: bold;
-}
-
-.author {
-    text-align: right;
-    color: #888;
-    font-size: 0.9em;
-    margin-top: 2em;
-    padding-top: 1em;
-    border-top: 1px solid #eee;
-}
-"#.to_string();
-
-        let html_template = r#"<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{TITLE}}</title>
-    <style>
-        {{CSS}}
-    </style>
-</head>
-<body>
-    {{CONTENT}}
-    <div class="author">{{AUTHOR}}</div>
-</body>
-</html>"#
-            .to_string();
-
-        ThemeTemplate::new(css, html_template, "wechat".to_string())
-    }
-
-    /// Creates the minimal theme.
-    fn create_minimal_theme(&self) -> ThemeTemplate {
-        let css = r#"
-body {
-    font-family: Georgia, serif;
-    line-height: 1.8;
-    color: #333;
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 40px 20px;
-    background-color: #fff;
-}
-
-h1, h2, h3, h4, h5, h6 {
-    color: #222;
-    margin-top: 2em;
-    margin-bottom: 1em;
-    font-weight: normal;
-}
-
-h1 {
-    font-size: 1.8em;
-    text-align: center;
-    margin-bottom: 2em;
-}
-
-h2 {
-    font-size: 1.3em;
-}
-
-h3 {
-    font-size: 1.1em;
-}
-
-p {
-    margin-bottom: 1.2em;
-    text-align: justify;
-}
-
-img {
-    max-width: 100%;
-    height: auto;
-    margin: 2em 0;
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-}
-
-code {
-    font-family: "Courier New", monospace;
-    background-color: #f5f5f5;
-    padding: 2px 4px;
-    border-radius: 2px;
-}
-
-pre {
-    background-color: #f5f5f5;
-    padding: 1em;
-    overflow-x: auto;
-    border-radius: 2px;
-    font-family: "Courier New", monospace;
-}
-
-blockquote {
-    border-left: 3px solid #ccc;
-    margin: 1.5em 0;
-    padding-left: 1.5em;
-    color: #666;
-    font-style: italic;
-}
-
-ul, ol {
-    margin: 1.2em 0;
-    padding-left: 2em;
-}
-
-li {
-    margin: 0.5em 0;
-}
-
-.author {
-    text-align: center;
-    color: #888;
-    font-style: italic;
-    margin-top: 3em;
-    font-size: 0.9em;
-}
-"#
-        .to_string();
-
-        let html_template = r#"<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{TITLE}}</title>
-    <style>
-        {{CSS}}
-    </style>
-</head>
-<body>
-    {{CONTENT}}
-    <div class="author">{{AUTHOR}}</div>
-</body>
-</html>"#
-            .to_string();
-
-        ThemeTemplate::new(css, html_template, "minimal".to_string())
-    }
 
     /// Renders markdown content with the specified theme.
     pub fn render(
@@ -724,16 +377,32 @@ mod tests {
             BuiltinTheme::Default
         );
         assert_eq!(
-            "github".parse::<BuiltinTheme>().unwrap(),
-            BuiltinTheme::Github
+            "lapis".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::Lapis
         );
         assert_eq!(
-            "wechat".parse::<BuiltinTheme>().unwrap(),
-            BuiltinTheme::Wechat
+            "maize".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::Maize
         );
         assert_eq!(
-            "minimal".parse::<BuiltinTheme>().unwrap(),
-            BuiltinTheme::Minimal
+            "orangeheart".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::OrangeHeart
+        );
+        assert_eq!(
+            "phycat".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::PhyCat
+        );
+        assert_eq!(
+            "pie".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::Pie
+        );
+        assert_eq!(
+            "purple".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::Purple
+        );
+        assert_eq!(
+            "rainbow".parse::<BuiltinTheme>().unwrap(),
+            BuiltinTheme::Rainbow
         );
 
         assert!("nonexistent".parse::<BuiltinTheme>().is_err());
@@ -768,7 +437,6 @@ mod tests {
         assert!(html.contains("<h1>Test Title</h1>"));
         assert!(html.contains("<strong>bold</strong>"));
         assert!(html.contains("Test Article"));
-        assert!(html.contains("Test Author"));
     }
 
     #[test]

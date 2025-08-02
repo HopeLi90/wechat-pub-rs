@@ -49,6 +49,8 @@ pub struct MarkdownContent {
     pub author: Option<String>,
     /// Cover image path (from front matter)
     pub cover: Option<String>,
+    /// Theme name (from front matter)
+    pub theme: Option<String>,
     /// Main content (markdown text)
     pub content: String,
     /// List of image references
@@ -171,12 +173,14 @@ impl MarkdownParser {
         let title = self.extract_title(&content_without_frontmatter, &metadata);
         let author = metadata.get("author").cloned();
         let cover = metadata.get("cover").cloned();
+        let theme = metadata.get("theme").cloned();
         let images = self.extract_images(&content_without_frontmatter)?;
 
         Ok(MarkdownContent {
             title,
             author,
             cover,
+            theme,
             content: content_without_frontmatter,
             images,
             metadata,
@@ -420,6 +424,7 @@ More content here."#;
         assert_eq!(content.title, Some("Test Article".to_string()));
         assert_eq!(content.author, Some("Jane Doe".to_string()));
         assert_eq!(content.cover, Some("images/cover.jpg".to_string()));
+        assert_eq!(content.theme, None);
         assert_eq!(content.images.len(), 1);
         assert_eq!(content.images[0].alt_text, "Test");
         assert_eq!(content.images[0].original_url, "./test.jpg");
@@ -506,6 +511,29 @@ title: Test Article
     }
 
     #[test]
+    fn test_theme_extraction_from_frontmatter() {
+        let parser = MarkdownParser::new();
+        let markdown_with_theme = r#"---
+title: Test Article
+theme: lapis
+---
+
+# Content"#;
+
+        let content = parser.parse(markdown_with_theme).unwrap();
+        assert_eq!(content.theme, Some("lapis".to_string()));
+
+        let markdown_without_theme = r#"---
+title: Test Article
+---
+
+# Content"#;
+
+        let content = parser.parse(markdown_without_theme).unwrap();
+        assert_eq!(content.theme, None);
+    }
+
+    #[test]
     fn test_markdown_parsing_with_all_frontmatter() {
         let parser = MarkdownParser::new();
         let markdown = r#"---
@@ -525,6 +553,7 @@ Article content with an image: ![Example](./example.jpg)
         assert_eq!(content.title, Some("Full Example".to_string()));
         assert_eq!(content.author, Some("John Doe".to_string()));
         assert_eq!(content.cover, Some("assets/cover-image.png".to_string()));
+        assert_eq!(content.theme, None);
         assert_eq!(
             content.metadata.get("date"),
             Some(&"2024-01-01".to_string())
