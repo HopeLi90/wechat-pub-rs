@@ -5,6 +5,7 @@
 //!
 //! ## Features
 //!
+//! - **Unified Upload Flow**: All images uploaded as permanent materials for consistency
 //! - **Concurrent Image Uploads**: Up to 5 simultaneous image uploads for performance
 //! - **Content Deduplication**: BLAKE3 hash-based image deduplication to avoid duplicates
 //! - **Size Validation**: Automatic file size validation (max 10MB for images)
@@ -16,9 +17,10 @@
 //!
 //! 1. **Validation**: Check file size and format
 //! 2. **Hash Calculation**: Generate BLAKE3 hash for deduplication
-//! 3. **Concurrent Upload**: Process multiple images simultaneously
-//! 4. **URL Replacement**: Replace local paths with WeChat URLs
-//! 5. **Error Recovery**: Retry failed uploads with exponential backoff
+//! 3. **Deduplication Check**: Search existing permanent materials by hash
+//! 4. **Upload as Permanent Material**: All images uploaded using the permanent material API
+//! 5. **Concurrent Processing**: Process multiple images simultaneously
+//! 6. **Error Recovery**: Retry failed uploads with exponential backoff
 //!
 //! ## Draft Management
 //!
@@ -101,9 +103,7 @@
 
 use crate::auth::TokenManager;
 use crate::error::{Result, WeChatError};
-use crate::http::{
-    DraftResponse, ImageUploadResponse, MaterialUploadResponse, WeChatHttpClient, WeChatResponse,
-};
+use crate::http::{DraftResponse, MaterialUploadResponse, WeChatHttpClient, WeChatResponse};
 use crate::markdown::ImageRef;
 use blake3;
 use futures::future::try_join_all;
@@ -279,7 +279,7 @@ impl ImageUploader {
             return Ok(Vec::new());
         }
 
-        info!("Uploading {} images concurrently", images.len());
+        debug!("Uploading {} images concurrently", images.len());
 
         // Create upload tasks
         let tasks: Vec<_> = images
@@ -307,7 +307,7 @@ impl ImageUploader {
         Ok(uploads)
     }
 
-    /// Uploads a single image.
+    /// Uploads a single image as permanent material.
     async fn upload_single_image(
         &self,
         image_ref: ImageRef,
@@ -330,67 +330,72 @@ impl ImageUploader {
             self.download_remote_image(&image_ref.original_url).await?
         };
 
+        // Use unified upload method
+        let (media_id, url) = self
+            .upload_image_as_material(image_data, &image_ref.original_url)
+            .await?;
+
+        info!(
+            "Successfully uploaded image: {} -> {} (media_id: {})",
+            image_ref.original_url, url, media_id
+        );
+
+        Ok(UploadResult {
+            image_ref,
+            media_id,
+            url,
+        })
+    }
+
+    /// Unified method to upload image data as permanent material with deduplication.
+    async fn upload_image_as_material(
+        &self,
+        image_data: Vec<u8>,
+        original_path: &str,
+    ) -> Result<(String, String)> {
         // Calculate BLAKE3 hash of the image content
         let hash = blake3::hash(&image_data);
         let hash_str = hash.to_hex().to_string();
         debug!("Image hash: {hash_str}");
 
         // Check if this image already exists by searching materials
-        if let Some(existing_url) = self.find_existing_image_by_hash(&hash_str).await? {
-            info!("Image already exists with hash {hash_str}, reusing URL: {existing_url}");
-
-            // Extract media_id from URL (format: https://mmbiz.qpic.cn/mmbiz_jpg/{media_id}/0)
-            let media_id = existing_url
-                .strip_prefix("https://mmbiz.qpic.cn/mmbiz_jpg/")
-                .and_then(|s| s.strip_suffix("/0"))
-                .unwrap_or(&hash_str)
-                .to_string();
-
-            return Ok(UploadResult {
-                image_ref,
-                media_id,
-                url: existing_url,
-            });
+        debug!("Checking for existing material with hash: {}", hash_str);
+        if let Some((existing_url, media_id)) = self.find_material_by_hash(&hash_str).await? {
+            info!("Image already exists with hash {hash_str}, reusing media_id: {media_id}");
+            return Ok((media_id, existing_url));
         }
 
         // Use hash as filename with appropriate extension
-        let extension = self.get_image_extension(&image_ref.original_url, &image_data);
+        let extension = self.get_image_extension(original_path, &image_data);
         let filename = format!("{hash_str}.{extension}");
-        debug!("Uploading new image with filename: {filename}");
+        debug!("Uploading new image as permanent material with filename: {filename}");
 
-        // Upload to WeChat
+        // Upload as permanent material
         let access_token = self.token_manager.get_access_token().await?;
         let response = self
             .http_client
-            .upload_file(
-                "/cgi-bin/media/uploadimg",
-                &access_token,
-                "media",
-                image_data,
-                &filename,
-            )
+            .upload_material(&access_token, "image", image_data, &filename)
             .await?;
 
-        // Parse response
-        let upload_response: WeChatResponse<ImageUploadResponse> = response.json().await?;
-        let image_upload = upload_response.into_result()?;
-
-        // WeChat returns the image URL in a different format for permanent images
-        let url = format!(
-            "https://mmbiz.qpic.cn/mmbiz_jpg/{}/0",
-            image_upload.media_id
-        );
+        // Parse response - handle both direct and wrapped response formats
+        let response_text = response.text().await?;
+        let material = if let Ok(direct_response) =
+            serde_json::from_str::<MaterialUploadResponse>(&response_text)
+        {
+            direct_response
+        } else {
+            // If that fails, try parsing as standard WeChat error response
+            let upload_response: WeChatResponse<MaterialUploadResponse> =
+                serde_json::from_str(&response_text)?;
+            upload_response.into_result()?
+        };
 
         info!(
-            "Successfully uploaded new image: {} -> {} (hash: {})",
-            image_ref.original_url, url, hash_str
+            "Successfully uploaded new material: {} -> media_id: {} (hash: {})",
+            original_path, material.media_id, hash_str
         );
 
-        Ok(UploadResult {
-            image_ref,
-            media_id: image_upload.media_id,
-            url,
-        })
+        Ok((material.media_id, material.url))
     }
 
     /// Loads image data from local file with size validation.
@@ -499,9 +504,13 @@ impl ImageUploader {
             Err(_) => return Ok(None),
         };
 
-        let materials_result = response
-            .json::<WeChatResponse<MaterialListResponse>>()
-            .await;
+        let response_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unable to read response".to_string());
+
+        let materials_result =
+            serde_json::from_str::<WeChatResponse<MaterialListResponse>>(&response_text);
 
         match materials_result {
             Ok(materials_response) => {
@@ -527,13 +536,6 @@ impl ImageUploader {
         Ok(None)
     }
 
-    /// Searches for an existing image by its hash in recent materials.
-    async fn find_existing_image_by_hash(&self, hash_str: &str) -> Result<Option<String>> {
-        self.find_material_by_hash(hash_str)
-            .await
-            .map(|opt| opt.map(|(url, _)| url))
-    }
-
     /// Uploads a cover image as permanent material.
     pub async fn upload_cover_material(&self, cover_path: &Path) -> Result<String> {
         info!(
@@ -544,40 +546,18 @@ impl ImageUploader {
         // Load image data
         let image_data = self.load_local_image(cover_path).await?;
 
-        // Calculate BLAKE3 hash of the image content
-        let hash = blake3::hash(&image_data);
-        let hash_str = hash.to_hex().to_string();
-        debug!("Cover image hash: {hash_str}");
-
-        // Check if this image already exists by searching materials
-        if let Some((_existing_url, media_id)) = self.find_material_by_hash(&hash_str).await? {
-            info!("Cover image already exists with hash {hash_str}, reusing media_id: {media_id}");
-            return Ok(media_id);
-        }
-
-        // Use hash as filename with appropriate extension
-        let extension = self.get_image_extension(&cover_path.to_string_lossy(), &image_data);
-        let filename = format!("{hash_str}.{extension}");
-        debug!("Uploading new cover image with filename: {filename}");
-
-        // Upload as permanent material (different API endpoint than regular images)
-        let access_token = self.token_manager.get_access_token().await?;
-        let response = self
-            .http_client
-            .upload_material(&access_token, "image", image_data, &filename)
+        // Use unified upload method
+        let (media_id, _url) = self
+            .upload_image_as_material(image_data, &cover_path.to_string_lossy())
             .await?;
-
-        // Parse response
-        let upload_response: WeChatResponse<MaterialUploadResponse> = response.json().await?;
-        let material = upload_response.into_result()?;
 
         info!(
             "Successfully uploaded cover image: {} -> media_id: {}",
             cover_path.display(),
-            material.media_id
+            media_id
         );
 
-        Ok(material.media_id)
+        Ok(media_id)
     }
 }
 
@@ -737,10 +717,12 @@ impl DraftManager {
             .post_json_with_token("/cgi-bin/draft/batchget", &access_token, &request)
             .await?;
 
-        let list_response: WeChatResponse<DraftListResponse> = response.json().await?;
-        let drafts = list_response.into_result()?;
+        let response_text = response.text().await?;
 
-        debug!("Found {} drafts", drafts.item.len());
+        let list_response: WeChatResponse<DraftListResponse> =
+            serde_json::from_str(&response_text)?;
+
+        let drafts = list_response.into_result()?;
         Ok(drafts.item)
     }
 

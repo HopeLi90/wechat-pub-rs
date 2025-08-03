@@ -1,6 +1,6 @@
 //! Main WeChat client implementation.
 
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::auth::TokenManager;
 use crate::error::{Result, WeChatError};
@@ -185,6 +185,7 @@ impl WeChatClient {
 
         // Step 1: Parse markdown content
         let mut content = self.parse_markdown_file(markdown_path).await?;
+        debug!("Found {} images in content", content.images.len());
 
         // Step 2: Upload images concurrently
         let base_dir = utils::get_base_directory(markdown_path).unwrap_or_else(|| Path::new("."));
@@ -193,6 +194,7 @@ impl WeChatClient {
             .image_uploader
             .upload_images(content.images.clone(), base_dir)
             .await?;
+        info!("Completed uploading {} images", upload_results.len());
 
         // Step 3: Replace image URLs in content
         let url_mapping = self.draft_manager.create_url_mapping(&upload_results);
@@ -205,7 +207,9 @@ impl WeChatClient {
             .or(content.cover.as_ref())
             .expect("Cover image should be available from validation");
 
+        info!("Starting to upload cover image: {}", cover_path);
         let cover_media_id = Some(self.upload_cover_image(cover_path, base_dir).await?);
+        info!("Completed uploading cover image");
 
         // Step 5: Render content with theme (from frontmatter, options, or default)
         let theme = content

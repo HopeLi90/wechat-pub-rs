@@ -1,6 +1,6 @@
 [package]
 name = "wechat-pub-rs"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["tyr.chen@gmail.com>"]
 edition = "2024"
 license = "MIT"
@@ -11,6 +11,15 @@ description = "A simple, high-performance WeChat Official Account Rust SDK for u
 readme = "README.md"
 categories = ["development-tools"]
 keywords = ["wechat", "weixin", "official-account", "sdk"]
+include = [
+  "src/",
+  "templates/",
+  "themes/",
+  "Cargo.toml",
+  "LICENSE.md",
+  "README.md",
+]
+
 
 [dependencies]
 # HTTP client with minimal features

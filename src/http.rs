@@ -298,12 +298,17 @@ pub struct WeChatResponse<T> {
     pub data: Option<T>,
 }
 
-impl<T> WeChatResponse<T> {
+impl<T: std::fmt::Debug> WeChatResponse<T> {
     /// Converts the response to a Result, checking for API errors.
     pub fn into_result(self) -> Result<T> {
         if self.errcode == 0 {
-            self.data
-                .ok_or_else(|| WeChatError::Internal(anyhow::anyhow!("Missing response data")))
+            self.data.ok_or_else(|| {
+                WeChatError::Internal(anyhow::anyhow!(
+                    "Missing response data. errcode: {}, errmsg: {}",
+                    self.errcode,
+                    self.errmsg
+                ))
+            })
         } else {
             Err(WeChatError::from_api_response(self.errcode, self.errmsg))
         }
@@ -317,13 +322,10 @@ pub struct AccessTokenResponse {
     pub expires_in: u64,
 }
 
-/// Image upload response from WeChat API.
+/// Image upload response from WeChat API (uploadimg endpoint).
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ImageUploadResponse {
-    #[serde(rename = "type")]
-    pub media_type: String,
-    pub media_id: String,
-    pub created_at: u64,
+    pub url: String,
 }
 
 /// Material upload response from WeChat API (for permanent materials like cover images).
