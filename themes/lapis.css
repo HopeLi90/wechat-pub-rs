@@ -101,6 +101,12 @@
     font-size: 1.2em;
 }
 
+#wepub ul,
+#wepub ol {
+    margin: 1em 0.8em;
+    padding-left: 2em;
+}
+
 #wepub ul {
     list-style-type: disc;
 }
@@ -115,6 +121,11 @@
 
 #wepub ol {
     list-style-type: decimal;
+}
+
+#wepub ol li,
+#wepub ul li {
+    padding-left: 0.1em;
 }
 
 #wepub blockquote {
