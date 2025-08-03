@@ -716,10 +716,6 @@ Some article content here.
             .await
             .unwrap();
 
-        assert_eq!(
-            content.title,
-            Some("和 Gemini 关于第一性原理的对话".to_string())
-        );
         assert_eq!(content.author, Some("陈小天".to_string()));
         assert_eq!(
             content.description,

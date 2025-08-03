@@ -242,7 +242,9 @@ impl ThemeTemplate {
                 message: format!("CSS inlining failed: {e}"),
             })?;
 
-        Ok(inlined_html)
+        // remove "\n"
+        let html_without_newlines = inlined_html.replace("\n", "");
+        Ok(html_without_newlines)
     }
 
     /// Post-process HTML to preserve code block structure for WeChat.
