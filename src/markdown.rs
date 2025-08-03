@@ -167,8 +167,19 @@ impl SummaryExtractor {
                         self.summary.push_str(text);
                         self.text_length += text.len();
                     } else {
-                        self.summary.push_str(&text[..remaining]);
-                        self.summary.push_str("...");
+                        // Find the nearest valid UTF-8 boundary
+                        let mut boundary = remaining;
+                        while boundary > 0 && !text.is_char_boundary(boundary) {
+                            boundary -= 1;
+                        }
+
+                        if boundary > 0 {
+                            self.summary.push_str(&text[..boundary]);
+                            self.summary.push_str("...");
+                        } else {
+                            // If we can't find a valid boundary, just add ellipsis
+                            self.summary.push_str("...");
+                        }
                         self.text_length = self.max_length;
                     }
                 }

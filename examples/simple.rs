@@ -19,7 +19,7 @@ async fn main() -> Result<()> {
     if tokio::fs::metadata(example_md_path).await.is_ok() {
         match client.upload(example_md_path).await {
             Ok(draft_id) => {
-                println!("✅ Successfully uploaded fixtures/example.md with draft ID: {draft_id}");
+                println!("✅ Successfully uploaded {example_md_path} with draft ID: {draft_id}");
             }
             Err(e) => {
                 eprintln!("❌ Real file upload failed: {e}");
