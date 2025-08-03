@@ -338,18 +338,15 @@ mod tests {
 
     #[test]
     fn test_validate_app_credentials() {
-        // Valid credentials
         assert!(
             validate_app_credentials("wx1234567890123456", "12345678901234567890123456789012")
                 .is_ok()
         );
 
-        // Invalid app ID
         assert!(validate_app_credentials("", "12345678901234567890123456789012").is_err());
         assert!(validate_app_credentials("invalid", "12345678901234567890123456789012").is_err());
         assert!(validate_app_credentials("wx123", "12345678901234567890123456789012").is_err());
 
-        // Invalid app secret
         assert!(validate_app_credentials("wx1234567890123456", "").is_err());
         assert!(validate_app_credentials("wx1234567890123456", "short").is_err());
     }
@@ -371,51 +368,42 @@ mod tests {
     fn test_resolve_path() {
         let base = Path::new("/base/dir");
 
-        // Test valid relative paths
         assert_eq!(
             resolve_path(base, "relative.md").unwrap(),
             PathBuf::from("/base/dir/relative.md")
         );
 
-        // Test valid absolute paths
         assert_eq!(
             resolve_path(base, "/absolute.md").unwrap(),
             PathBuf::from("/absolute.md")
         );
 
-        // Test current directory reference
         assert_eq!(
             resolve_path(base, "./relative.md").unwrap(),
             PathBuf::from("/base/dir/./relative.md")
         );
 
-        // Test path traversal detection
         assert!(resolve_path(base, "../../../etc/passwd").is_err());
         assert!(resolve_path(base, "..\\..\\windows\\system32").is_err());
 
-        // Test dangerous file extensions
         assert!(resolve_path(base, "malware.exe").is_err());
         assert!(resolve_path(base, "script.bat").is_err());
     }
 
     #[test]
     fn test_is_safe_path() {
-        // Test safe paths
         assert!(is_safe_path(Path::new("document.md")));
         assert!(is_safe_path(Path::new("image.jpg")));
         assert!(is_safe_path(Path::new("folder/file.txt")));
 
-        // Test dangerous extensions
         assert!(!is_safe_path(Path::new("malware.exe")));
         assert!(!is_safe_path(Path::new("script.bat")));
         assert!(!is_safe_path(Path::new("virus.scr")));
 
-        // Test reserved names
         assert!(!is_safe_path(Path::new("CON")));
         assert!(!is_safe_path(Path::new("PRN.txt")));
         assert!(!is_safe_path(Path::new("COM1.dat")));
 
-        // Test hidden files (should be blocked except for common ones)
         assert!(!is_safe_path(Path::new(".hidden")));
         assert!(is_safe_path(Path::new(".gitignore")));
         assert!(is_safe_path(Path::new(".env")));
@@ -423,14 +411,12 @@ mod tests {
 
     #[test]
     fn test_has_path_traversal() {
-        // Test traversal patterns
         assert!(has_path_traversal("../etc/passwd"));
         assert!(has_path_traversal("..\\windows\\system32"));
         assert!(has_path_traversal("folder/../../../etc"));
         assert!(has_path_traversal(".."));
         assert!(has_path_traversal("...."));
 
-        // Test safe paths
         assert!(!has_path_traversal("normal/path/file.txt"));
         assert!(!has_path_traversal("file.md"));
         assert!(!has_path_traversal("folder/subfolder/file"));
@@ -438,20 +424,14 @@ mod tests {
 
     #[test]
     fn test_sanitize_filename() {
-        // Test normal filename
         assert_eq!(sanitize_filename("normal_file.txt"), "normal_file.txt");
 
-        // Test dangerous characters
         assert_eq!(sanitize_filename("file<>:\"|?*.txt"), "file.txt");
 
-        // Test path separators
         assert_eq!(sanitize_filename("path/to/file.txt"), "path_to_file.txt");
         assert_eq!(sanitize_filename("path\\to\\file.txt"), "path_to_file.txt");
 
-        // Test hidden files
         assert_eq!(sanitize_filename(".hidden"), "_hidden");
-
-        // Test empty filename
         assert_eq!(sanitize_filename(""), "unnamed");
 
         // Test very long filename

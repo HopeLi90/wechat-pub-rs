@@ -600,15 +600,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_creation_with_invalid_credentials() {
-        // Invalid app ID
         let result = WeChatClient::new("invalid", "12345678901234567890123456789012").await;
         assert!(result.is_err());
 
-        // Invalid app secret
         let result = WeChatClient::new("wx1234567890123456", "short").await;
         assert!(result.is_err());
 
-        // Empty credentials
         let result = WeChatClient::new("", "").await;
         assert!(result.is_err());
     }

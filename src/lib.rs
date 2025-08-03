@@ -126,8 +126,6 @@ pub use theme::BuiltinTheme;
 mod tests {
     #[test]
     fn test_module_structure() {
-        // Basic smoke test to ensure modules compile
-        // This test verifies that all modules can be compiled successfully
         assert_eq!(1, 1);
     }
 }

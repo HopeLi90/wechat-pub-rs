@@ -700,22 +700,18 @@ mod tests {
 
     #[test]
     fn test_config_validation() {
-        // Test invalid upload size
         let mut config = Config::default();
         config.security.max_upload_size = 0;
         assert!(config.validate().is_err());
 
-        // Test invalid concurrent uploads
         let mut config = Config::default();
         config.performance.max_concurrent_uploads = 0;
         assert!(config.validate().is_err());
 
-        // Test too many concurrent uploads
         let mut config = Config::default();
         config.performance.max_concurrent_uploads = 25;
         assert!(config.validate().is_err());
 
-        // Test invalid backoff factor
         let mut config = Config::default();
         config.retry.backoff_factor = 0.5;
         assert!(config.validate().is_err());

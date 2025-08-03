@@ -527,7 +527,6 @@ mod tests {
     fn test_theme_manager_creation() {
         let manager = ThemeManager::new();
 
-        // Should have all built-in themes
         for theme in BuiltinTheme::all() {
             assert!(manager.has_theme(theme.as_str()));
         }
@@ -793,10 +792,6 @@ fn main() {
         // This test has been updated - post_process_code_blocks is now internal to ThemeTemplate
         // and properly handles syntax-highlighted code blocks using HTML parsing instead of regex
 
-        // The original issue where regex pattern fails with syntax highlighting has been fixed
-        // by using the scraper library for proper HTML parsing
-
-        // The CSS inlining issue has been fixed by embedding styles directly in the tags
         let manager = ThemeManager::new();
         let markdown = "```rust\nfn main() {}\n```";
         let mut metadata = HashMap::new();

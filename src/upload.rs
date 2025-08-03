@@ -969,7 +969,6 @@ mod tests {
         ));
 
         let _manager = DraftManager::new(http_client, token_manager);
-        // Just test that creation works
     }
 
     #[test]
