@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.5.1](https://github.com/compare/v0.5.0..v0.5.1) - 2025-08-03
+
+### Bug Fixes
+
+- fix #1 by removing all "\n" - looks like wechart will incorrectly render \n as <li> upon save - ([e799e94](https://github.com/commit/e799e942f5bc1dc9b9c71172e6c5c6c02d2f5c57)) - Tyr Chen
+
+### Miscellaneous Chores
+
+- bump version - ([b7d8d51](https://github.com/commit/b7d8d51cce0733fcfa795e8327268c3a26d06abb)) - Tyr Chen
+- removed unnecessary comments - ([15470d9](https://github.com/commit/15470d998ce4f043104ff08ec24c4c9730b46644)) - Tyr Chen
+
+### Other
+
+- Update CHANGELOG.md - ([e175180](https://github.com/commit/e1751809169fee8a445e36f2f4dfe1e33638c3c8)) - Tyr Chen
+- Merge pull request #2 from tyrchen/fix/issue-1-list-rendering
+
+fix #1 by removing all "\n" - ([b39e61b](https://github.com/commit/b39e61bc9d2ab0a269bb0411b31cdee08e1ce5d4)) - Tyr Chen
+
+---
 ## [0.5.0](https://github.com/compare/v0.4.3..v0.5.0) - 2025-08-03
 
 ### Features
