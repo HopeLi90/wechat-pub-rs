@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.4.1](https://github.com/compare/v0.4.0..v0.4.1) - 2025-08-03
+
+### Bug Fixes
+
+- utf8 boundary issue - ([56d8439](https://github.com/commit/56d8439cb654b6b79367985179730963d7f43e87)) - Tyr Chen
+
+### Other
+
+- Update CHANGELOG.md - ([27ee6b9](https://github.com/commit/27ee6b9585220f2687039613791f66dd7a56a258)) - Tyr Chen
+
+---
 ## [0.4.0] - 2025-08-03
 
 ### Bug Fixes
