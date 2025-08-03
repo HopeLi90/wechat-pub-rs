@@ -1,6 +1,7 @@
 ---
 author: 陈小天
 title: 和 Gemini 关于第一性原理的对话
+description: 为了这壶醋，我包了这顿饺子（写了几千行 Rust，做了个工具）
 cover: images/02-cover.png
 theme: lapis
 code: solarized-light

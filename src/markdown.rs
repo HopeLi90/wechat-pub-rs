@@ -17,6 +17,7 @@
 //! ---
 //! title: "Article Title"          # Article title (required for good UX)
 //! author: "Author Name"           # Author name (optional)
+//! description: "Article summary"  # Article description/digest (optional, used as WeChat article summary)
 //! cover: "images/cover.jpg"       # Cover image path (required)
 //! theme: "lapis"                  # Theme name (optional, defaults to "default")
 //! code: "github"                  # Code highlighting theme (optional)
@@ -47,6 +48,7 @@
 //!
 //! println!("Title: {:?}", content.title);
 //! println!("Author: {:?}", content.author);
+//! println!("Description: {:?}", content.description);
 //! println!("Theme: {:?}", content.theme);
 //! println!("Found {} images", content.images.len());
 //!
@@ -105,6 +107,8 @@ pub struct MarkdownContent {
     pub title: Option<String>,
     /// Author name (from front matter)
     pub author: Option<String>,
+    /// Article description/digest (from front matter)
+    pub description: Option<String>,
     /// Cover image path (from front matter)
     pub cover: Option<String>,
     /// Theme name (from front matter)
@@ -417,6 +421,7 @@ impl MarkdownParser {
         let (metadata, content_without_frontmatter) = self.extract_frontmatter(markdown)?;
         let title = self.extract_title(&content_without_frontmatter, &metadata);
         let author = metadata.get("author").cloned();
+        let description = metadata.get("description").cloned();
         let cover = metadata.get("cover").cloned();
         let theme = metadata.get("theme").cloned();
         let code = metadata.get("code").cloned();
@@ -425,6 +430,7 @@ impl MarkdownParser {
         Ok(MarkdownContent {
             title,
             author,
+            description,
             cover,
             theme,
             code,
@@ -614,6 +620,7 @@ More content here."#;
 
         assert_eq!(content.title, Some("Test Article".to_string()));
         assert_eq!(content.author, Some("Jane Doe".to_string()));
+        assert_eq!(content.description, None);
         assert_eq!(content.cover, Some("images/cover.jpg".to_string()));
         assert_eq!(content.theme, None);
         assert_eq!(content.code, None);
@@ -749,11 +756,79 @@ title: Test Article
     }
 
     #[test]
+    fn test_description_extraction_from_frontmatter() {
+        let parser = MarkdownParser::new();
+        let markdown_with_description = r#"---
+title: Test Article
+author: Jane Doe
+description: This is a custom description for the article
+cover: images/cover.jpg
+---
+
+# Content"#;
+
+        let content = parser.parse(markdown_with_description).unwrap();
+        assert_eq!(
+            content.description,
+            Some("This is a custom description for the article".to_string())
+        );
+
+        let markdown_without_description = r#"---
+title: Test Article
+author: Jane Doe
+cover: images/cover.jpg
+---
+
+# Content"#;
+
+        let content = parser.parse(markdown_without_description).unwrap();
+        assert_eq!(content.description, None);
+    }
+
+    #[test]
+    fn test_description_vs_auto_summary_priority() {
+        let parser = MarkdownParser::new();
+
+        // Test that description takes priority over auto-generated summary
+        let markdown_with_description = r#"---
+title: Test Article
+description: Custom description from frontmatter
+---
+
+# Test Article
+
+This is the first paragraph of the article content. It should not be used as the summary when a description is provided in the frontmatter.
+
+This is the second paragraph with more content."#;
+
+        let content = parser.parse(markdown_with_description).unwrap();
+
+        // Verify description is extracted
+        assert_eq!(
+            content.description,
+            Some("Custom description from frontmatter".to_string())
+        );
+
+        // Verify auto-generated summary would be different
+        let auto_summary = content.get_summary(120);
+        assert!(auto_summary.contains("This is the first paragraph"));
+
+        // Test priority logic (simulating what create_article does)
+        let final_digest = content
+            .description
+            .clone()
+            .unwrap_or_else(|| content.get_summary(120));
+        assert_eq!(final_digest, "Custom description from frontmatter");
+        assert_ne!(final_digest, auto_summary);
+    }
+
+    #[test]
     fn test_markdown_parsing_with_all_frontmatter() {
         let parser = MarkdownParser::new();
         let markdown = r#"---
 title: Full Example
 author: John Doe
+description: Complete example with all frontmatter fields
 cover: assets/cover-image.png
 date: 2024-01-01
 ---
@@ -767,6 +842,10 @@ Article content with an image: ![Example](./example.jpg)
 
         assert_eq!(content.title, Some("Full Example".to_string()));
         assert_eq!(content.author, Some("John Doe".to_string()));
+        assert_eq!(
+            content.description,
+            Some("Complete example with all frontmatter fields".to_string())
+        );
         assert_eq!(content.cover, Some("assets/cover-image.png".to_string()));
         assert_eq!(content.theme, None);
         assert_eq!(content.code, None);

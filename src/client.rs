@@ -536,8 +536,11 @@ impl WeChatClient {
             .or_else(|| content.author.clone())
             .unwrap_or_else(|| "Anonymous".to_string());
 
-        // Generate digest (summary)
-        let digest = content.get_summary(120);
+        // Use description from frontmatter if available, otherwise generate summary
+        let digest = content
+            .description
+            .clone()
+            .unwrap_or_else(|| content.get_summary(120));
 
         // Create article
         let mut article = Article::new(title, author, html_content)
@@ -718,6 +721,10 @@ Some article content here.
             Some("和 Gemini 关于第一性原理的对话".to_string())
         );
         assert_eq!(content.author, Some("陈小天".to_string()));
+        assert_eq!(
+            content.description,
+            Some("为了这壶醋，我包了这顿饺子（写了几千行 Rust，做了个工具）".to_string())
+        );
         assert_eq!(content.cover, Some("images/02-cover.png".to_string()));
 
         // Verify that validation works with the fixture (should pass because cover exists in frontmatter and file exists)
