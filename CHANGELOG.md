@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.5.0](https://github.com/compare/v0.4.3..v0.5.0) - 2025-08-03
+
+### Features
+
+- Code Organization Overhaul - ([0c4849f](https://github.com/commit/0c4849f92ca53c87c690a8565cf9817851d3d3f5)) - Tyr Chen
+- fix code block format issue - ([00e1d67](https://github.com/commit/00e1d675a3accd5258ff3248df2b38bc5ff2977a)) - Tyr Chen
+
+### Other
+
+- Update CHANGELOG.md - ([7099216](https://github.com/commit/7099216c3737c34cc13fe4aa306a8fa5a2816d20)) - Tyr Chen
+
+---
 ## [0.4.3](https://github.com/compare/v0.4.2..v0.4.3) - 2025-08-03
 
 ### Features
