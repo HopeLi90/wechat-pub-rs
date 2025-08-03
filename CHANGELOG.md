@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.4.3](https://github.com/compare/v0.4.2..v0.4.3) - 2025-08-03
+
+### Features
+
+- allow description - ([9a50e14](https://github.com/commit/9a50e1475b7dc0cad31e43886b3bd23af54db617)) - Tyr Chen
+
+### Other
+
+- Update CHANGELOG.md - ([1c2ed66](https://github.com/commit/1c2ed662dd00c4d3e70562c445bbf567842a3a72)) - Tyr Chen
+
+---
 ## [0.4.2](https://github.com/compare/v0.4.1..v0.4.2) - 2025-08-03
 
 ### Features
