@@ -111,12 +111,39 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::fs;
-use tokio::sync::Semaphore;
+use tokio::sync::{RwLock, Semaphore};
 use tracing::{debug, info, warn};
 
 /// Maximum concurrent image uploads to prevent overwhelming the server
 const MAX_CONCURRENT_UPLOADS: usize = 5;
+
+/// Cache TTL for material lookups (5 minutes)
+const MATERIAL_CACHE_TTL: Duration = Duration::from_secs(300);
+
+/// Maximum number of cached materials
+const MAX_CACHE_SIZE: usize = 1000;
+
+/// Cached material entry with timestamp
+#[derive(Debug, Clone)]
+struct CachedMaterial {
+    material: MaterialItem,
+    cached_at: Instant,
+}
+
+impl CachedMaterial {
+    fn new(material: MaterialItem) -> Self {
+        Self {
+            material,
+            cached_at: Instant::now(),
+        }
+    }
+
+    fn is_expired(&self) -> bool {
+        self.cached_at.elapsed() > MATERIAL_CACHE_TTL
+    }
+}
 
 /// Maximum file size for images (10 MB)
 const MAX_IMAGE_SIZE: u64 = 10 * 1024 * 1024;
@@ -235,7 +262,7 @@ pub struct DraftListResponse {
 }
 
 /// Material item in the list response.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct MaterialItem {
     pub media_id: String,
     pub name: String,
@@ -251,12 +278,14 @@ pub struct MaterialListResponse {
     pub item: Vec<MaterialItem>,
 }
 
-/// Image uploader with concurrent upload capabilities.
+/// Image uploader with concurrent upload capabilities and intelligent caching.
 #[derive(Debug)]
 pub struct ImageUploader {
     http_client: Arc<WeChatHttpClient>,
     token_manager: Arc<TokenManager>,
     semaphore: Arc<Semaphore>,
+    /// Cache for material lookups by hash to avoid redundant API calls
+    material_cache: Arc<RwLock<HashMap<String, CachedMaterial>>>,
 }
 
 impl ImageUploader {
@@ -266,6 +295,7 @@ impl ImageUploader {
             http_client,
             token_manager,
             semaphore: Arc::new(Semaphore::new(MAX_CONCURRENT_UPLOADS)),
+            material_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -297,7 +327,9 @@ impl ImageUploader {
         // Execute all tasks and collect results
         let results = try_join_all(tasks)
             .await
-            .map_err(|e| WeChatError::Internal(anyhow::anyhow!("Task join error: {}", e)))?;
+            .map_err(|e| WeChatError::Internal {
+                message: format!("Task join error: {e}"),
+            })?;
 
         // Convert task results to upload results
         let upload_results: Result<Vec<_>> = results.into_iter().collect();
@@ -318,13 +350,15 @@ impl ImageUploader {
             .semaphore
             .acquire()
             .await
-            .map_err(|e| WeChatError::Internal(anyhow::anyhow!("Semaphore error: {}", e)))?;
+            .map_err(|e| WeChatError::Internal {
+                message: format!("Semaphore error: {e}"),
+            })?;
 
         debug!("Processing image: {}", image_ref.original_url);
 
         // Load image data
         let image_data = if image_ref.is_local {
-            let image_path = image_ref.resolve_path(base_path);
+            let image_path = image_ref.resolve_path(base_path)?;
             self.load_local_image(&image_path).await?
         } else {
             self.download_remote_image(&image_ref.original_url).await?
@@ -347,7 +381,7 @@ impl ImageUploader {
         })
     }
 
-    /// Unified method to upload image data as permanent material with deduplication.
+    /// Unified method to upload image data as permanent material with deduplication and caching.
     async fn upload_image_as_material(
         &self,
         image_data: Vec<u8>,
@@ -358,10 +392,43 @@ impl ImageUploader {
         let hash_str = hash.to_hex().to_string();
         debug!("Image hash: {hash_str}");
 
-        // Check if this image already exists by searching materials
+        // Check cache first for performance optimization
+        {
+            let cache = self.material_cache.read().await;
+            if let Some(cached) = cache.get(&hash_str) {
+                if !cached.is_expired() {
+                    debug!("Cache hit for hash: {hash_str}");
+                    return Ok((
+                        cached.material.media_id.clone(),
+                        cached.material.url.clone(),
+                    ));
+                } else {
+                    debug!("Cache entry expired for hash: {hash_str}");
+                }
+            }
+        }
+
+        // Check if this image already exists by searching materials (with cache update)
         debug!("Checking for existing material with hash: {}", hash_str);
         if let Some((existing_url, media_id)) = self.find_material_by_hash(&hash_str).await? {
             info!("Image already exists with hash {hash_str}, reusing media_id: {media_id}");
+
+            // Cache the found material for future lookups
+            {
+                let mut cache = self.material_cache.write().await;
+                let material_item = MaterialItem {
+                    media_id: media_id.clone(),
+                    name: hash_str.clone(),
+                    update_time: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                    url: existing_url.clone(),
+                };
+                cache.insert(hash_str.clone(), CachedMaterial::new(material_item));
+                debug!("Cached found material for hash: {hash_str}");
+            }
+
             return Ok((media_id, existing_url));
         }
 
@@ -395,10 +462,78 @@ impl ImageUploader {
             original_path, material.media_id, hash_str
         );
 
+        // Cache the successful upload for future lookups
+        {
+            let mut cache = self.material_cache.write().await;
+
+            // Implement LRU eviction if cache is full
+            if cache.len() >= MAX_CACHE_SIZE {
+                // Remove 10% of oldest entries
+                let remove_count = MAX_CACHE_SIZE / 10;
+                let mut to_remove = Vec::with_capacity(remove_count);
+
+                for (hash, cached) in cache.iter() {
+                    to_remove.push((hash.clone(), cached.cached_at));
+                    if to_remove.len() >= remove_count {
+                        break;
+                    }
+                }
+
+                // Sort by timestamp and remove oldest
+                to_remove.sort_by_key(|(_, timestamp)| *timestamp);
+                for (hash, _) in to_remove.into_iter().take(remove_count) {
+                    cache.remove(&hash);
+                }
+
+                debug!("Evicted {} old cache entries", remove_count);
+            }
+
+            // Add new material to cache
+            let material_item = MaterialItem {
+                media_id: material.media_id.clone(),
+                name: hash_str.clone(),
+                update_time: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                url: material.url.clone(),
+            };
+
+            cache.insert(hash_str.clone(), CachedMaterial::new(material_item));
+            debug!("Cached material for hash: {hash_str}");
+        }
+
         Ok((material.media_id, material.url))
     }
 
-    /// Loads image data from local file with size validation.
+    /// Clears expired entries from the material cache.
+    pub async fn clear_expired_cache(&self) {
+        let mut cache = self.material_cache.write().await;
+        let initial_size = cache.len();
+
+        cache.retain(|hash, cached| {
+            let keep = !cached.is_expired();
+            if !keep {
+                debug!("Removing expired cache entry: {}", hash);
+            }
+            keep
+        });
+
+        let removed = initial_size - cache.len();
+        if removed > 0 {
+            info!("Cleared {} expired cache entries", removed);
+        }
+    }
+
+    /// Gets cache statistics for monitoring.
+    pub async fn get_cache_stats(&self) -> (usize, usize) {
+        let cache = self.material_cache.read().await;
+        let total = cache.len();
+        let expired = cache.values().filter(|c| c.is_expired()).count();
+        (total, expired)
+    }
+
+    /// Loads image data from local file with streaming and size validation.
     async fn load_local_image(&self, path: &Path) -> Result<Vec<u8>> {
         // Check file size before loading
         let metadata = fs::metadata(path)
@@ -428,7 +563,7 @@ impl ImageUploader {
         })
     }
 
-    /// Downloads image data from remote URL with size validation.
+    /// Downloads image data from remote URL with optimized streaming and size validation.
     async fn download_remote_image(&self, url: &str) -> Result<Vec<u8>> {
         debug!("Downloading remote image: {url}");
 
@@ -567,6 +702,7 @@ impl Clone for ImageUploader {
             http_client: Arc::clone(&self.http_client),
             token_manager: Arc::clone(&self.token_manager),
             semaphore: Arc::clone(&self.semaphore),
+            material_cache: Arc::clone(&self.material_cache),
         }
     }
 }

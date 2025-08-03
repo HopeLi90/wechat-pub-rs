@@ -71,6 +71,12 @@ blake3 = "1.8.2"
 regex = "1.5"
 css-inline = "0.17.0"
 
+# Random number generation for jitter
+fastrand = "2.0"
+
+# Async traits
+async-trait = "0.1"
+
 [dev-dependencies]
 tokio-test = "0.4"
 env_logger = "0.11"

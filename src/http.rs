@@ -1,71 +1,69 @@
 //! HTTP client module with retry mechanisms and WeChat API integration.
+//!
+//! This module provides secure HTTP client functionality with:
+//! - Request size limits to prevent DoS attacks
+//! - Timeout configuration for reliability
+//! - Retry mechanisms with exponential backoff
+//! - Safe download limits for external content
 
+use crate::config::{Config, RetryConfig, SecurityConfig};
 use crate::error::{Result, WeChatError};
+use crate::traits::HttpClient;
 use reqwest::{Client, Response, multipart};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, warn};
 
-/// Configuration for retry behavior.
-#[derive(Debug, Clone)]
-pub struct RetryConfig {
-    /// Maximum number of retry attempts
-    pub max_attempts: u32,
-    /// Base delay between retries
-    pub base_delay: Duration,
-    /// Maximum delay between retries
-    pub max_delay: Duration,
-    /// Exponential backoff factor
-    pub backoff_factor: f64,
-}
-
-impl Default for RetryConfig {
-    fn default() -> Self {
-        Self {
-            max_attempts: 3,
-            base_delay: Duration::from_millis(500),
-            max_delay: Duration::from_secs(30),
-            backoff_factor: 2.0,
-        }
-    }
-}
+// Note: RetryConfig and SecurityConfig are re-exported from config module for backward compatibility
 
 /// HTTP client wrapper for WeChat API calls with automatic retry and token management.
 #[derive(Debug, Clone)]
 pub struct WeChatHttpClient {
     client: Client,
-    base_url: String,
-    retry_config: RetryConfig,
+    config: Config,
 }
 
 impl WeChatHttpClient {
     /// Creates a new WeChat HTTP client.
     pub fn new() -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .connect_timeout(Duration::from_secs(10))
-            .build()?;
-
-        Ok(Self {
-            client,
-            base_url: "https://api.weixin.qq.com".to_string(),
-            retry_config: RetryConfig::default(),
-        })
+        Self::with_config(Config::default())
     }
 
-    /// Creates a new client with custom retry configuration.
+    /// Creates a new client with custom configuration.
+    pub fn with_config(config: Config) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(config.request_timeout())
+            .connect_timeout(config.connect_timeout())
+            .user_agent(&config.http.user_agent)
+            .build()?;
+
+        Ok(Self { client, config })
+    }
+
+    /// Creates a new client with custom retry configuration (legacy).
     pub fn with_retry_config(retry_config: RetryConfig) -> Result<Self> {
-        let mut client = Self::new()?;
-        client.retry_config = retry_config;
-        Ok(client)
+        let config = Config {
+            retry: retry_config,
+            ..Default::default()
+        };
+        Self::with_config(config)
+    }
+
+    /// Creates a new client with custom security configuration (legacy).
+    pub fn with_security_config(security_config: SecurityConfig) -> Result<Self> {
+        let config = Config {
+            security: security_config,
+            ..Default::default()
+        };
+        Self::with_config(config)
     }
 
     /// Makes a GET request with access token.
     pub async fn get_with_token(&self, endpoint: &str, access_token: &str) -> Result<Response> {
         let url = format!(
             "{}{}?access_token={}",
-            self.base_url, endpoint, access_token
+            self.config.http.base_url, endpoint, access_token
         );
         self.execute_with_retry(|| self.client.get(&url).send())
             .await
@@ -80,13 +78,13 @@ impl WeChatHttpClient {
     ) -> Result<Response> {
         let url = format!(
             "{}{}?access_token={}",
-            self.base_url, endpoint, access_token
+            self.config.http.base_url, endpoint, access_token
         );
         self.execute_with_retry(|| self.client.post(&url).json(body).send())
             .await
     }
 
-    /// Uploads a file using multipart form data.
+    /// Uploads a file using multipart form data with size validation.
     pub async fn upload_file(
         &self,
         endpoint: &str,
@@ -95,25 +93,34 @@ impl WeChatHttpClient {
         file_data: Vec<u8>,
         filename: &str,
     ) -> Result<Response> {
+        // Validate file size
+        crate::utils::validate_file_size(
+            file_data.len() as u64,
+            self.config.security.max_upload_size,
+            "upload",
+        )
+        .map_err(WeChatError::config_error)?;
+
+        // Sanitize filename for security
+        let safe_filename = crate::utils::sanitize_filename(filename);
         let url = format!(
             "{}{}?access_token={}",
-            self.base_url, endpoint, access_token
+            self.config.http.base_url, endpoint, access_token
         );
 
-        // Guess MIME type from filename
-        let mime_type = mime_guess::from_path(filename)
+        // Guess MIME type from safe filename
+        let mime_type = mime_guess::from_path(&safe_filename)
             .first_or_octet_stream()
             .to_string();
 
         // Clone data for each retry attempt
         let field_name = field_name.to_string();
-        let filename = filename.to_string();
         let url = url.clone();
         let client = self.client.clone();
 
         self.execute_with_retry(move || {
             let part = multipart::Part::bytes(file_data.clone())
-                .file_name(filename.clone())
+                .file_name(safe_filename.clone())
                 .mime_str(&mime_type)
                 .unwrap();
             let form = multipart::Form::new().part(field_name.clone(), part);
@@ -122,7 +129,7 @@ impl WeChatHttpClient {
         .await
     }
 
-    /// Uploads a permanent material (for cover images).
+    /// Uploads a permanent material (for cover images) with size validation.
     pub async fn upload_material(
         &self,
         access_token: &str,
@@ -130,24 +137,36 @@ impl WeChatHttpClient {
         file_data: Vec<u8>,
         filename: &str,
     ) -> Result<Response> {
+        // Validate file size
+        crate::utils::validate_file_size(
+            file_data.len() as u64,
+            self.config.security.max_upload_size,
+            "material",
+        )
+        .map_err(WeChatError::config_error)?;
+
+        // Sanitize filename for security
+        let safe_filename = crate::utils::sanitize_filename(filename);
         let url = format!(
             "{}{}?access_token={}&type={}",
-            self.base_url, "/cgi-bin/material/add_material", access_token, material_type
+            self.config.http.base_url,
+            "/cgi-bin/material/add_material",
+            access_token,
+            material_type
         );
 
-        // Guess MIME type from filename
-        let mime_type = mime_guess::from_path(filename)
+        // Guess MIME type from safe filename
+        let mime_type = mime_guess::from_path(&safe_filename)
             .first_or_octet_stream()
             .to_string();
 
         // Clone data for each retry attempt
-        let filename = filename.to_string();
         let url = url.clone();
         let client = self.client.clone();
 
         self.execute_with_retry(move || {
             let part = multipart::Part::bytes(file_data.clone())
-                .file_name(filename.clone())
+                .file_name(safe_filename.clone())
                 .mime_str(&mime_type)
                 .unwrap();
 
@@ -158,16 +177,16 @@ impl WeChatHttpClient {
         .await
     }
 
-    /// Executes a request with retry logic.
+    /// Executes a request with intelligent retry logic.
     async fn execute_with_retry<F, Fut>(&self, mut operation: F) -> Result<Response>
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = std::result::Result<Response, reqwest::Error>>,
     {
-        let mut delay = self.retry_config.base_delay;
         let mut last_error = None;
+        let mut consecutive_failures = 0;
 
-        for attempt in 1..=self.retry_config.max_attempts {
+        for attempt in 1..=self.config.retry.max_attempts {
             match operation().await {
                 Ok(response) => {
                     // Check for WeChat API errors in successful HTTP responses
@@ -181,51 +200,74 @@ impl WeChatHttpClient {
                             .await
                             .unwrap_or_else(|_| "Unknown error".to_string());
 
-                        let error = WeChatError::Internal(anyhow::anyhow!(
-                            "HTTP {}: {}",
-                            status,
-                            error_text
-                        ));
+                        let error = WeChatError::Internal {
+                            message: format!("HTTP {status}: {error_text}"),
+                        };
 
-                        if attempt == self.retry_config.max_attempts || !error.is_retryable() {
+                        // Use error-specific retry logic
+                        let max_retries = error.max_retries().min(self.config.retry.max_attempts);
+                        if attempt >= max_retries || !error.is_retryable() {
                             return Err(error);
                         }
 
+                        consecutive_failures += 1;
                         last_error = Some(error);
                     }
                 }
                 Err(e) => {
-                    let error = WeChatError::Network(e);
+                    let error = WeChatError::Network {
+                        message: e.to_string(),
+                    };
 
-                    if attempt == self.retry_config.max_attempts || !error.is_retryable() {
+                    // Use error-specific retry logic
+                    let max_retries = error.max_retries().min(self.config.retry.max_attempts);
+                    if attempt >= max_retries || !error.is_retryable() {
                         return Err(error);
                     }
 
+                    consecutive_failures += 1;
                     last_error = Some(error);
                 }
             }
 
-            // Wait before retry
-            if attempt < self.retry_config.max_attempts {
-                warn!(
-                    "Request failed (attempt {}/{}), retrying in {:?}",
-                    attempt, self.retry_config.max_attempts, delay
-                );
+            // Wait before retry with intelligent backoff
+            if attempt < self.config.retry.max_attempts {
+                // Get delay from the last error or use base delay
+                let base_delay = last_error
+                    .as_ref()
+                    .map(|e| e.retry_delay())
+                    .unwrap_or(self.config.retry_base_delay());
 
-                sleep(delay).await;
+                // Add jitter to prevent thundering herd
+                let actual_delay = if self.config.retry.enable_jitter {
+                    let jitter = fastrand::u64(0..=base_delay.as_millis() as u64 / 4);
+                    base_delay + Duration::from_millis(jitter)
+                } else {
+                    base_delay
+                };
 
-                // Exponential backoff with jitter
-                delay = std::cmp::min(
+                // Exponential backoff for consecutive failures
+                let backoff_multiplier = (consecutive_failures as f64).min(4.0);
+                let final_delay = std::cmp::min(
                     Duration::from_millis(
-                        (delay.as_millis() as f64 * self.retry_config.backoff_factor) as u64,
+                        (actual_delay.as_millis() as f64
+                            * self.config.retry.backoff_factor.powf(backoff_multiplier))
+                            as u64,
                     ),
-                    self.retry_config.max_delay,
+                    self.config.retry_max_delay(),
                 );
+
+                warn!(
+                    "Request failed (attempt {}/{}), retrying in {:?} (consecutive failures: {})",
+                    attempt, self.config.retry.max_attempts, final_delay, consecutive_failures
+                );
+
+                sleep(final_delay).await;
             }
         }
 
-        Err(last_error.unwrap_or_else(|| {
-            WeChatError::Internal(anyhow::anyhow!("Retry loop completed without error"))
+        Err(last_error.unwrap_or_else(|| WeChatError::Internal {
+            message: "Retry loop completed without error".to_string(),
         }))
     }
 
@@ -241,6 +283,8 @@ impl WeChatHttpClient {
 
     /// Downloads content from a URL with size limits and streaming.
     pub async fn download_with_limit(&self, url: &str, max_size: u64) -> Result<Vec<u8>> {
+        // Use the smaller of provided max_size or security config max
+        let effective_max_size = max_size.min(self.config.security.max_download_size);
         use futures::StreamExt;
 
         let response = self
@@ -249,11 +293,11 @@ impl WeChatHttpClient {
 
         // Check content length if available
         if let Some(content_length) = response.content_length() {
-            if content_length > max_size {
+            if content_length > effective_max_size {
                 return Err(WeChatError::ImageUpload {
                     path: url.to_string(),
                     reason: format!(
-                        "Content too large: {content_length} bytes (max: {max_size} bytes)"
+                        "Content too large: {content_length} bytes (max: {effective_max_size} bytes)"
                     ),
                 });
             }
@@ -267,11 +311,11 @@ impl WeChatHttpClient {
             let chunk = chunk_result?;
             downloaded_size += chunk.len() as u64;
 
-            if downloaded_size > max_size {
+            if downloaded_size > effective_max_size {
                 return Err(WeChatError::ImageUpload {
                     path: url.to_string(),
                     reason: format!(
-                        "Content too large during download: {downloaded_size} bytes (max: {max_size} bytes)"
+                        "Content too large during download: {downloaded_size} bytes (max: {effective_max_size} bytes)"
                     ),
                 });
             }
@@ -281,6 +325,39 @@ impl WeChatHttpClient {
 
         debug!("Downloaded {downloaded_size} bytes from {url}");
         Ok(data)
+    }
+}
+
+// Implement the HttpClient trait for WeChatHttpClient
+#[async_trait::async_trait]
+impl HttpClient for WeChatHttpClient {
+    async fn get_with_token(&self, endpoint: &str, token: &str) -> Result<reqwest::Response> {
+        self.get_with_token(endpoint, token).await
+    }
+
+    async fn post_json_with_token<T: serde::Serialize + Send + Sync>(
+        &self,
+        endpoint: &str,
+        token: &str,
+        body: &T,
+    ) -> Result<reqwest::Response> {
+        self.post_json_with_token(endpoint, token, body).await
+    }
+
+    async fn upload_file(
+        &self,
+        endpoint: &str,
+        token: &str,
+        field_name: &str,
+        file_data: Vec<u8>,
+        filename: &str,
+    ) -> Result<reqwest::Response> {
+        self.upload_file(endpoint, token, field_name, file_data, filename)
+            .await
+    }
+
+    async fn download_with_limit(&self, url: &str, max_size: u64) -> Result<Vec<u8>> {
+        self.download_with_limit(url, max_size).await
     }
 }
 
@@ -302,12 +379,11 @@ impl<T: std::fmt::Debug> WeChatResponse<T> {
     /// Converts the response to a Result, checking for API errors.
     pub fn into_result(self) -> Result<T> {
         if self.errcode == 0 {
-            self.data.ok_or_else(|| {
-                WeChatError::Internal(anyhow::anyhow!(
+            self.data.ok_or_else(|| WeChatError::Internal {
+                message: format!(
                     "Missing response data. errcode: {}, errmsg: {}",
-                    self.errcode,
-                    self.errmsg
-                ))
+                    self.errcode, self.errmsg
+                ),
             })
         } else {
             Err(WeChatError::from_api_response(self.errcode, self.errmsg))
@@ -355,7 +431,7 @@ mod tests {
     fn test_retry_config() {
         let config = RetryConfig::default();
         assert_eq!(config.max_attempts, 3);
-        assert_eq!(config.base_delay, Duration::from_millis(500));
+        assert_eq!(config.base_delay_ms, 500);
         assert_eq!(config.backoff_factor, 2.0);
     }
 

@@ -204,19 +204,19 @@ impl ThemeTemplate {
         // Process CSS variables in both theme and highlight CSS
         let css_processor = CssVariableProcessor::new();
 
-        let processed_theme_css = css_processor.process_css(&self.theme_css).map_err(|e| {
-            WeChatError::Internal(anyhow::anyhow!(
-                "CSS variable processing failed for theme CSS: {}",
-                e
-            ))
-        })?;
+        let processed_theme_css =
+            css_processor
+                .process_css(&self.theme_css)
+                .map_err(|e| WeChatError::Internal {
+                    message: format!("CSS variable processing failed for theme CSS: {e}"),
+                })?;
 
-        let processed_highlight_css = css_processor.process_css(&self.code_css).map_err(|e| {
-            WeChatError::Internal(anyhow::anyhow!(
-                "CSS variable processing failed for highlight CSS: {}",
-                e
-            ))
-        })?;
+        let processed_highlight_css =
+            css_processor
+                .process_css(&self.code_css)
+                .map_err(|e| WeChatError::Internal {
+                    message: format!("CSS variable processing failed for highlight CSS: {e}"),
+                })?;
 
         // Create Askama template with the processed CSS
         let template = ArticleTemplate {
@@ -229,13 +229,15 @@ impl ThemeTemplate {
         };
 
         // Render the template to HTML
-        let html_with_css = template.render().map_err(|e| {
-            WeChatError::Internal(anyhow::anyhow!("Template rendering failed: {}", e))
+        let html_with_css = template.render().map_err(|e| WeChatError::Internal {
+            message: format!("Template rendering failed: {e}"),
         })?;
 
         // Use css-inline to convert CSS to inline styles
-        let inlined_html = css_inline::inline(&html_with_css)
-            .map_err(|e| WeChatError::Internal(anyhow::anyhow!("CSS inlining failed: {}", e)))?;
+        let inlined_html =
+            css_inline::inline(&html_with_css).map_err(|e| WeChatError::Internal {
+                message: format!("CSS inlining failed: {e}"),
+            })?;
 
         Ok(inlined_html)
     }

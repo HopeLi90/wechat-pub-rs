@@ -62,8 +62,8 @@ async fn main() -> Result<()> {
             Err(WeChatError::ThemeNotFound { theme }) => {
                 println!("❌ Theme not found: {theme}");
             }
-            Err(WeChatError::Network(err)) => {
-                println!("❌ Network error: {err}");
+            Err(WeChatError::Network { message }) => {
+                println!("❌ Network error: {message}");
                 println!("💡 This might be due to invalid credentials or network issues");
             }
             Err(e) => {

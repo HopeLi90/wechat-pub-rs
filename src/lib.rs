@@ -94,8 +94,8 @@
 //!     Err(WeChatError::ThemeNotFound { theme }) => {
 //!         eprintln!("Theme not found: {}", theme);
 //!     }
-//!     Err(WeChatError::Network(err)) => {
-//!         eprintln!("Network error: {}", err);
+//!     Err(WeChatError::Network { message }) => {
+//!         eprintln!("Network error: {}", message);
 //!     }
 //!     Err(err) => eprintln!("Other error: {}", err),
 //! }
@@ -105,16 +105,19 @@
 
 pub mod auth;
 pub mod client;
+pub mod config;
 pub mod css_vars;
 pub mod error;
 pub mod http;
 pub mod markdown;
 pub mod theme;
+pub mod traits;
 pub mod upload;
 pub mod utils;
 
 // Re-export main types for convenience
 pub use client::{UploadOptions, WeChatClient};
+pub use config::Config;
 pub use css_vars::CssVariableProcessor;
 pub use error::{ErrorSeverity, Result, WeChatError};
 pub use theme::BuiltinTheme;

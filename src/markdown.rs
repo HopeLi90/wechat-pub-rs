@@ -60,6 +60,7 @@
 //! ```
 
 use crate::error::{Result, WeChatError};
+use crate::utils;
 use comrak::{Arena, ComrakOptions, nodes::NodeValue};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -90,12 +91,26 @@ impl ImageRef {
         }
     }
 
-    /// Resolves the image path relative to a base directory.
-    pub fn resolve_path(&self, base_path: &Path) -> PathBuf {
+    /// Resolves the image path relative to a base directory with security validation.
+    pub fn resolve_path(&self, base_path: &Path) -> Result<PathBuf> {
         if self.is_local {
-            base_path.join(&self.original_url)
+            utils::resolve_path(base_path, &self.original_url).map_err(|e| {
+                WeChatError::config_error(format!(
+                    "Invalid image path '{}': {}",
+                    self.original_url, e
+                ))
+            })
         } else {
-            PathBuf::from(&self.original_url)
+            // For remote URLs, just return as-is but validate it's actually a URL
+            if self.original_url.starts_with("http://") || self.original_url.starts_with("https://")
+            {
+                Ok(PathBuf::from(&self.original_url))
+            } else {
+                Err(WeChatError::config_error(format!(
+                    "Invalid URL format: {}",
+                    self.original_url
+                )))
+            }
         }
     }
 }

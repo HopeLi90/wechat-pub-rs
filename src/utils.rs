@@ -1,9 +1,22 @@
 //! Utility functions and helpers.
+//!
+//! This module provides security-focused utilities with input validation
+//! and safe path handling to prevent common vulnerabilities.
 
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
+use std::sync::LazyLock;
+use std::{collections::HashSet, ffi::OsStr};
+use tracing::warn;
 
-/// Checks if a file exists and is readable.
+/// Checks if a file exists and is readable with path validation.
+/// Returns false for invalid or potentially dangerous paths.
 pub async fn file_exists(path: &Path) -> bool {
+    // Validate path for security
+    if !is_safe_path(path) {
+        warn!("Unsafe path access attempt: {:?}", path);
+        return false;
+    }
+
     tokio::fs::metadata(path).await.is_ok()
 }
 
@@ -56,17 +69,235 @@ pub fn validate_app_credentials(app_id: &str, app_secret: &str) -> Result<(), St
     Ok(())
 }
 
+/// Set of dangerous file extensions that should be blocked.
+static DANGEROUS_EXTENSIONS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    let mut set = HashSet::new();
+    set.insert("exe");
+    set.insert("bat");
+    set.insert("cmd");
+    set.insert("com");
+    set.insert("scr");
+    set.insert("pif");
+    set.insert("vbs");
+    set.insert("js");
+    set.insert("jse");
+    set.insert("wsf");
+    set.insert("wsh");
+    set.insert("msi");
+    set.insert("dll");
+    set.insert("scf");
+    set.insert("lnk");
+    set.insert("inf");
+    set.insert("reg");
+    set
+});
+
+/// Validates that a path is safe to access (prevents path traversal and dangerous files).
+pub fn is_safe_path(path: &Path) -> bool {
+    // Allow files in system temp directories
+    if let Some(path_str) = path.to_str() {
+        if path_str.contains("/tmp/")
+            || path_str.contains("/var/folders/")
+            || path_str.contains("\\Temp\\")
+        {
+            // Still check for dangerous extensions in temp files
+            if let Some(extension) = path.extension().and_then(OsStr::to_str) {
+                if DANGEROUS_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+    // Check for dangerous file extensions
+    if let Some(extension) = path.extension().and_then(OsStr::to_str) {
+        if DANGEROUS_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
+            return false;
+        }
+    }
+
+    // Check each component of the path
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                // Allow parent dir components, but they will be validated during resolution
+                continue;
+            }
+            Component::Normal(name) => {
+                let name_str = name.to_string_lossy();
+
+                // Check for hidden files (starting with .)
+                if name_str.starts_with('.') && name_str.len() > 1 {
+                    // Allow common hidden files and temp file patterns
+                    if !matches!(name_str.as_ref(), ".gitignore" | ".env" | ".dockerignore")
+                        && !name_str.starts_with(".tmp")
+                    {
+                        return false;
+                    }
+                }
+
+                // Check for null bytes and other dangerous characters
+                if name_str.contains('\0') || name_str.contains('\x01') {
+                    return false;
+                }
+
+                // Check for reserved names on Windows
+                if is_reserved_name(&name_str) {
+                    return false;
+                }
+            }
+            Component::RootDir | Component::CurDir => {
+                // These are generally safe
+                continue;
+            }
+            Component::Prefix(_) => {
+                // Windows drive prefixes are generally safe
+                continue;
+            }
+        }
+    }
+
+    true
+}
+
+/// Checks if a filename is a Windows reserved name.
+fn is_reserved_name(name: &str) -> bool {
+    let upper_name = name.to_uppercase();
+    let base_name = upper_name.split('.').next().unwrap_or("");
+
+    matches!(
+        base_name,
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
+}
+
+/// Checks if a path contains potential traversal sequences.
+pub fn has_path_traversal(path: &str) -> bool {
+    // Check for common traversal patterns
+    path.contains("../")
+        || path.contains("..\\")
+        || path.contains("/..")
+        || path.contains("\\..")
+        || path.contains("....")
+        || path == ".."
+}
+
+/// Sanitizes a filename by removing or replacing dangerous characters.
+pub fn sanitize_filename(filename: &str) -> String {
+    let mut sanitized = filename
+        .chars()
+        .filter(|&c| !matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\0'..='\x1F'))
+        .collect::<String>();
+
+    // Replace path separators with underscores
+    sanitized = sanitized.replace(['/', '\\'], "_");
+
+    // Ensure it doesn't start with a dot (hidden file)
+    if sanitized.starts_with('.') && sanitized.len() > 1 {
+        sanitized = format!("_{}", &sanitized[1..]);
+    }
+
+    // Ensure it's not empty
+    if sanitized.is_empty() {
+        sanitized = "unnamed".to_string();
+    }
+
+    // Truncate if too long
+    if sanitized.len() > 255 {
+        sanitized.truncate(252);
+        sanitized.push_str("...");
+    }
+
+    sanitized
+}
+
+/// Validates file size limits to prevent DoS attacks.
+pub fn validate_file_size(size: u64, max_size: u64, file_type: &str) -> Result<(), String> {
+    if size > max_size {
+        return Err(format!(
+            "{file_type} file too large: {size} bytes (max: {max_size} bytes)"
+        ));
+    }
+    Ok(())
+}
+
 /// Extracts the base directory from a file path.
 pub fn get_base_directory(file_path: &Path) -> Option<&Path> {
     file_path.parent()
 }
 
-/// Resolves relative paths against a base directory.
-pub fn resolve_path(base_dir: &Path, relative_path: &str) -> std::path::PathBuf {
-    if Path::new(relative_path).is_absolute() {
-        Path::new(relative_path).to_path_buf()
-    } else {
-        base_dir.join(relative_path)
+/// Resolves relative paths against a base directory with security validation.
+/// Prevents path traversal attacks by validating the resolved path.
+pub fn resolve_path(base_dir: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let relative = Path::new(relative_path);
+
+    // Check for absolute paths
+    if relative.is_absolute() {
+        if !is_safe_path(relative) {
+            return Err("Absolute path contains unsafe components".to_string());
+        }
+        return Ok(PathBuf::from(relative_path));
+    }
+
+    // Resolve relative path
+    let resolved = base_dir.join(relative_path);
+
+    // Validate the resolved path
+    if !is_safe_path(&resolved) {
+        return Err("Resolved path contains unsafe components".to_string());
+    }
+
+    // Ensure the resolved path is still under the base directory
+    match resolved.canonicalize() {
+        Ok(canonical_resolved) => {
+            match base_dir.canonicalize() {
+                Ok(canonical_base) => {
+                    if canonical_resolved.starts_with(&canonical_base) {
+                        Ok(resolved)
+                    } else {
+                        Err("Path traversal attempt detected".to_string())
+                    }
+                }
+                Err(_) => {
+                    // Base directory doesn't exist or can't be canonicalized
+                    // Fall back to basic validation
+                    if has_path_traversal(relative_path) {
+                        Err("Path contains traversal sequences".to_string())
+                    } else {
+                        Ok(resolved)
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            // File doesn't exist yet, validate the path structure
+            if has_path_traversal(relative_path) {
+                Err("Path contains traversal sequences".to_string())
+            } else {
+                Ok(resolved)
+            }
+        }
     }
 }
 
@@ -140,17 +371,104 @@ mod tests {
     fn test_resolve_path() {
         let base = Path::new("/base/dir");
 
+        // Test valid relative paths
         assert_eq!(
-            resolve_path(base, "relative.md"),
+            resolve_path(base, "relative.md").unwrap(),
             PathBuf::from("/base/dir/relative.md")
         );
+
+        // Test valid absolute paths
         assert_eq!(
-            resolve_path(base, "/absolute.md"),
+            resolve_path(base, "/absolute.md").unwrap(),
             PathBuf::from("/absolute.md")
         );
+
+        // Test current directory reference
         assert_eq!(
-            resolve_path(base, "./relative.md"),
+            resolve_path(base, "./relative.md").unwrap(),
             PathBuf::from("/base/dir/./relative.md")
         );
+
+        // Test path traversal detection
+        assert!(resolve_path(base, "../../../etc/passwd").is_err());
+        assert!(resolve_path(base, "..\\..\\windows\\system32").is_err());
+
+        // Test dangerous file extensions
+        assert!(resolve_path(base, "malware.exe").is_err());
+        assert!(resolve_path(base, "script.bat").is_err());
+    }
+
+    #[test]
+    fn test_is_safe_path() {
+        // Test safe paths
+        assert!(is_safe_path(Path::new("document.md")));
+        assert!(is_safe_path(Path::new("image.jpg")));
+        assert!(is_safe_path(Path::new("folder/file.txt")));
+
+        // Test dangerous extensions
+        assert!(!is_safe_path(Path::new("malware.exe")));
+        assert!(!is_safe_path(Path::new("script.bat")));
+        assert!(!is_safe_path(Path::new("virus.scr")));
+
+        // Test reserved names
+        assert!(!is_safe_path(Path::new("CON")));
+        assert!(!is_safe_path(Path::new("PRN.txt")));
+        assert!(!is_safe_path(Path::new("COM1.dat")));
+
+        // Test hidden files (should be blocked except for common ones)
+        assert!(!is_safe_path(Path::new(".hidden")));
+        assert!(is_safe_path(Path::new(".gitignore")));
+        assert!(is_safe_path(Path::new(".env")));
+    }
+
+    #[test]
+    fn test_has_path_traversal() {
+        // Test traversal patterns
+        assert!(has_path_traversal("../etc/passwd"));
+        assert!(has_path_traversal("..\\windows\\system32"));
+        assert!(has_path_traversal("folder/../../../etc"));
+        assert!(has_path_traversal(".."));
+        assert!(has_path_traversal("...."));
+
+        // Test safe paths
+        assert!(!has_path_traversal("normal/path/file.txt"));
+        assert!(!has_path_traversal("file.md"));
+        assert!(!has_path_traversal("folder/subfolder/file"));
+    }
+
+    #[test]
+    fn test_sanitize_filename() {
+        // Test normal filename
+        assert_eq!(sanitize_filename("normal_file.txt"), "normal_file.txt");
+
+        // Test dangerous characters
+        assert_eq!(sanitize_filename("file<>:\"|?*.txt"), "file.txt");
+
+        // Test path separators
+        assert_eq!(sanitize_filename("path/to/file.txt"), "path_to_file.txt");
+        assert_eq!(sanitize_filename("path\\to\\file.txt"), "path_to_file.txt");
+
+        // Test hidden files
+        assert_eq!(sanitize_filename(".hidden"), "_hidden");
+
+        // Test empty filename
+        assert_eq!(sanitize_filename(""), "unnamed");
+
+        // Test very long filename
+        let long_name = "a".repeat(300);
+        let sanitized = sanitize_filename(&long_name);
+        assert!(sanitized.len() <= 255);
+        assert!(sanitized.ends_with("..."));
+    }
+
+    #[test]
+    fn test_validate_file_size() {
+        // Test valid size
+        assert!(validate_file_size(1000, 2000, "test").is_ok());
+
+        // Test oversized file
+        let result = validate_file_size(3000, 2000, "image");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("image file too large"));
     }
 }

@@ -44,11 +44,11 @@ use std::fmt;
 pub type Result<T> = std::result::Result<T, WeChatError>;
 
 /// Comprehensive error type for WeChat SDK operations.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum WeChatError {
     /// Network-related errors (retryable)
-    #[error("Network request failed: {0}")]
-    Network(#[from] reqwest::Error),
+    #[error("Network request failed: {message}")]
+    Network { message: String },
 
     /// Request timeout (retryable)
     #[error("Request timeout")]
@@ -92,16 +92,16 @@ pub enum WeChatError {
     Config { message: String },
 
     /// JSON serialization/deserialization errors
-    #[error("JSON processing failed: {0}")]
-    Json(#[from] serde_json::Error),
+    #[error("JSON processing failed: {message}")]
+    Json { message: String },
 
     /// I/O errors
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
+    #[error("I/O error: {message}")]
+    Io { message: String },
 
     /// Generic errors for wrapping other error types
-    #[error("Internal error: {0}")]
-    Internal(#[from] anyhow::Error),
+    #[error("Internal error: {message}")]
+    Internal { message: String },
 }
 
 impl WeChatError {
@@ -113,7 +113,7 @@ impl WeChatError {
     pub fn is_retryable(&self) -> bool {
         match self {
             // Network and timeout errors are always retryable
-            WeChatError::Network(_) | WeChatError::Timeout => true,
+            WeChatError::Network { .. } | WeChatError::Timeout => true,
 
             // Authentication errors are retryable once
             WeChatError::InvalidToken => true,
@@ -141,9 +141,9 @@ impl WeChatError {
     /// Gets the severity level of the error for logging purposes.
     pub fn severity(&self) -> ErrorSeverity {
         match self {
-            WeChatError::Network(_) | WeChatError::Timeout | WeChatError::ImageUpload { .. } => {
-                ErrorSeverity::Warning
-            }
+            WeChatError::Network { .. }
+            | WeChatError::Timeout
+            | WeChatError::ImageUpload { .. } => ErrorSeverity::Warning,
 
             WeChatError::InvalidToken | WeChatError::InvalidCredentials => ErrorSeverity::Error,
 
@@ -161,9 +161,9 @@ impl WeChatError {
             },
 
             WeChatError::ThemeRender { .. }
-            | WeChatError::Json(_)
-            | WeChatError::Io(_)
-            | WeChatError::Internal(_) => ErrorSeverity::Error,
+            | WeChatError::Json { .. }
+            | WeChatError::Io { .. }
+            | WeChatError::Internal { .. } => ErrorSeverity::Error,
         }
     }
 
@@ -187,6 +187,133 @@ impl WeChatError {
     pub fn config_error(message: impl Into<String>) -> Self {
         WeChatError::Config {
             message: message.into(),
+        }
+    }
+
+    /// Gets the recommended retry delay for this error type.
+    pub fn retry_delay(&self) -> std::time::Duration {
+        use std::time::Duration;
+
+        match self {
+            // Network errors - exponential backoff starting from 1s
+            WeChatError::Network { .. } | WeChatError::Timeout => Duration::from_secs(1),
+
+            // Authentication errors - immediate retry
+            WeChatError::InvalidToken => Duration::from_millis(100),
+
+            // Image upload errors - moderate delay
+            WeChatError::ImageUpload { .. } => Duration::from_millis(500),
+
+            // WeChat API errors - depends on error code
+            WeChatError::WeChatApi { code, .. } => match code {
+                // Rate limiting - longer delay
+                45009 | 45011 => Duration::from_secs(10),
+                // Server errors - moderate delay
+                -1 | 50001 | 50002 => Duration::from_secs(2),
+                // Token errors - quick retry
+                40001 | 40014 | 42001 | 42007 => Duration::from_millis(200),
+                // Default delay
+                _ => Duration::from_secs(1),
+            },
+
+            // Non-retryable errors - no delay (won't be used)
+            _ => Duration::ZERO,
+        }
+    }
+
+    /// Gets the maximum number of retry attempts for this error type.
+    pub fn max_retries(&self) -> u32 {
+        match self {
+            // Network errors - many retries
+            WeChatError::Network { .. } | WeChatError::Timeout => 5,
+
+            // Authentication errors - few retries (token refresh should fix it)
+            WeChatError::InvalidToken => 2,
+
+            // Image upload errors - moderate retries
+            WeChatError::ImageUpload { .. } => 3,
+
+            // WeChat API errors - depends on error code
+            WeChatError::WeChatApi { code, .. } => match code {
+                // Rate limiting - more retries with longer delays
+                45009 | 45011 => 10,
+                // Server errors - moderate retries
+                -1 | 50001 | 50002 => 3,
+                // Token errors - few retries
+                40001 | 40014 | 42001 | 42007 => 2,
+                // Other API errors - no retries
+                _ => 0,
+            },
+
+            // Non-retryable errors
+            _ => 0,
+        }
+    }
+
+    /// Determines if this error indicates a temporary service issue.
+    pub fn is_temporary(&self) -> bool {
+        match self {
+            WeChatError::Network { .. } | WeChatError::Timeout => true,
+            WeChatError::WeChatApi { code, .. } => match code {
+                // Server errors are typically temporary
+                -1 | 50001 | 50002 => true,
+                // Rate limiting is temporary
+                45009 | 45011 => true,
+                // Other errors are typically permanent
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// Gets recovery suggestions for this error.
+    pub fn recovery_suggestion(&self) -> Option<&'static str> {
+        match self {
+            WeChatError::InvalidToken => Some("Try refreshing the access token"),
+            WeChatError::InvalidCredentials => Some("Check your app_id and app_secret"),
+            WeChatError::FileNotFound { .. } => Some("Check if the file path is correct"),
+            WeChatError::ImageUpload { .. } => Some("Check file size and format"),
+            WeChatError::ThemeNotFound { .. } => Some("Use a valid theme name or 'default'"),
+            WeChatError::WeChatApi { code, .. } => match code {
+                40001 => Some("Access token expired, refresh and retry"),
+                40003 => Some("Check your openid parameter"),
+                45009 => Some("Rate limit exceeded, wait and retry"),
+                48001 => Some("API unauthorized, check permissions"),
+                _ => Some("Check WeChat API documentation for error code"),
+            },
+            _ => None,
+        }
+    }
+}
+
+impl From<reqwest::Error> for WeChatError {
+    fn from(error: reqwest::Error) -> Self {
+        WeChatError::Network {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<serde_json::Error> for WeChatError {
+    fn from(error: serde_json::Error) -> Self {
+        WeChatError::Json {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<std::io::Error> for WeChatError {
+    fn from(error: std::io::Error) -> Self {
+        WeChatError::Io {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl From<anyhow::Error> for WeChatError {
+    fn from(error: anyhow::Error) -> Self {
+        WeChatError::Internal {
+            message: error.to_string(),
         }
     }
 }
@@ -267,5 +394,88 @@ mod tests {
             }
             _ => panic!("Expected Config error"),
         }
+    }
+
+    #[test]
+    fn test_retry_delay() {
+        // Network errors should have base delay
+        let network_err = WeChatError::Network {
+            message: "connection failed".to_string(),
+        };
+        assert_eq!(network_err.retry_delay(), std::time::Duration::from_secs(1));
+
+        // Rate limiting should have longer delay
+        let rate_limit_err = WeChatError::from_api_response(45009, "rate limit exceeded");
+        assert_eq!(
+            rate_limit_err.retry_delay(),
+            std::time::Duration::from_secs(10)
+        );
+
+        // Token errors should have quick retry
+        let token_err = WeChatError::from_api_response(40001, "invalid credential");
+        assert_eq!(
+            token_err.retry_delay(),
+            std::time::Duration::from_millis(200)
+        );
+    }
+
+    #[test]
+    fn test_max_retries() {
+        // Network errors should have many retries
+        let network_err = WeChatError::Network {
+            message: "connection failed".to_string(),
+        };
+        assert_eq!(network_err.max_retries(), 5);
+
+        // Rate limiting should have more retries
+        let rate_limit_err = WeChatError::from_api_response(45009, "rate limit exceeded");
+        assert_eq!(rate_limit_err.max_retries(), 10);
+
+        // Non-retryable errors should have no retries
+        let config_err = WeChatError::config_error("invalid config");
+        assert_eq!(config_err.max_retries(), 0);
+    }
+
+    #[test]
+    fn test_is_temporary() {
+        // Network errors are temporary
+        let network_err = WeChatError::Network {
+            message: "connection failed".to_string(),
+        };
+        assert!(network_err.is_temporary());
+
+        // Server errors are temporary
+        let server_err = WeChatError::from_api_response(50001, "server error");
+        assert!(server_err.is_temporary());
+
+        // Configuration errors are not temporary
+        let config_err = WeChatError::config_error("invalid config");
+        assert!(!config_err.is_temporary());
+    }
+
+    #[test]
+    fn test_recovery_suggestion() {
+        // Token errors should suggest refresh
+        let token_err = WeChatError::InvalidToken;
+        assert_eq!(
+            token_err.recovery_suggestion(),
+            Some("Try refreshing the access token")
+        );
+
+        // File not found should suggest checking path
+        let file_err = WeChatError::FileNotFound {
+            path: "test.md".to_string(),
+        };
+        assert_eq!(
+            file_err.recovery_suggestion(),
+            Some("Check if the file path is correct")
+        );
+
+        // API errors should provide specific suggestions
+        let api_err = WeChatError::from_api_response(40001, "invalid credential");
+        assert_eq!(
+            api_err.recovery_suggestion(),
+            Some("Access token expired, refresh and retry")
+        );
     }
 }
