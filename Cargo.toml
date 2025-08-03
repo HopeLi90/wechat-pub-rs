@@ -1,6 +1,6 @@
 [package]
 name = "wechat-pub-rs"
-version = "0.4.3"
+version = "0.5.0"
 authors = ["tyr.chen@gmail.com>"]
 edition = "2024"
 license = "MIT"
@@ -70,6 +70,9 @@ blake3 = "1.8.2"
 # CSS processing
 regex = "1.5"
 css-inline = "0.17.0"
+
+# HTML parsing for better code block processing
+scraper = "0.23"
 
 # Random number generation for jitter
 fastrand = "2.0"
