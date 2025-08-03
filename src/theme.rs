@@ -363,8 +363,11 @@ impl ThemeManager {
         plugins.render.codefence_syntax_highlighter = Some(&adapter);
 
         // Convert markdown to HTML using comrak with syntect
-        let html_content =
+        let mut html_content =
             markdown_to_html_with_plugins(markdown_content, &self.markdown_options, &plugins);
+
+        // Post-process HTML to fix code formatting for WeChat
+        html_content = self.post_process_code_blocks(html_content);
 
         // Create a new template with the highlight CSS
         let template_with_highlight = ThemeTemplate {
@@ -401,6 +404,50 @@ impl ThemeManager {
                 .cloned()
                 .unwrap_or_default()
         })
+    }
+
+    /// Post-process HTML to fix code formatting for WeChat.
+    /// Replaces newlines with <br/> and spaces with &nbsp; in code blocks.
+    fn post_process_code_blocks(&self, html: String) -> String {
+        use regex::Regex;
+
+        // Process inline code blocks
+        let inline_code_regex = Regex::new(r"<code>([^<]*)</code>").unwrap();
+        let html = inline_code_regex
+            .replace_all(&html, |caps: &regex::Captures| {
+                let content = &caps[1];
+                let processed = content
+                    .replace('\n', "<br/>")
+                    .replace("  ", "&nbsp;&nbsp;")
+                    .replace('\t', "&nbsp;&nbsp;&nbsp;&nbsp;");
+                format!("<code>{processed}</code>")
+            })
+            .to_string();
+
+        // Process code blocks within pre tags
+        let pre_code_regex = Regex::new(r"<pre[^>]*><code[^>]*>([^<]*)</code></pre>").unwrap();
+        pre_code_regex
+            .replace_all(&html, |caps: &regex::Captures| {
+                let full_match = &caps[0];
+                let content = &caps[1];
+
+                // Extract the opening tags
+                let pre_end = full_match.find("><code").unwrap();
+                let code_start = pre_end + 1;
+                let code_end = full_match[code_start..].find('>').unwrap() + code_start + 1;
+
+                let pre_tag = &full_match[..pre_end + 1];
+                let code_tag = &full_match[code_start..code_end];
+
+                // Process the content
+                let processed = content
+                    .replace('\n', "<br/>")
+                    .replace("  ", "&nbsp;&nbsp;")
+                    .replace('\t', "&nbsp;&nbsp;&nbsp;&nbsp;");
+
+                format!("{pre_tag}{code_tag}{processed}</code></pre>")
+            })
+            .to_string()
     }
 }
 
@@ -520,7 +567,13 @@ mod tests {
     #[test]
     fn test_highlight_theme_rendering() {
         let manager = ThemeManager::new();
-        let markdown = "# Test\n\n```rust\nfn main() {\n    println!(\"Hello, world!\");\n}\n```";
+        let markdown = r#"# Test
+
+```rust
+fn main() {
+    println!("Hello, world!");
+}
+```"#;
 
         let mut metadata = HashMap::new();
         metadata.insert("title".to_string(), "Test Article".to_string());

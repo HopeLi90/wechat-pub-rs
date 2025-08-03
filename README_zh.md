@@ -38,10 +38,10 @@ use wechat_pub_rs::{WeChatClient, Result};
 async fn main() -> Result<()> {
     // 使用您的微信公众号凭据创建客户端
     let client = WeChatClient::new("your_app_id", "your_app_secret").await?;
-    
+
     // 上传 Markdown 文件（主题和元数据从 frontmatter 读取）
     let draft_id = client.upload("./article.md").await?;
-    
+
     println!("创建草稿，ID: {}", draft_id);
     Ok(())
 }
@@ -55,7 +55,7 @@ use wechat_pub_rs::{WeChatClient, UploadOptions, Result};
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = WeChatClient::new("your_app_id", "your_app_secret").await?;
-    
+
     // 使用自定义选项上传
     let options = UploadOptions::with_theme("lapis")
         .title("自定义标题")
@@ -64,16 +64,16 @@ async fn main() -> Result<()> {
         .show_cover(true)
         .comments(true, false)
         .source_url("https://example.com");
-    
+
     let draft_id = client.upload_with_options("./article.md", options).await?;
-    
+
     // 管理草稿
     let draft_info = client.get_draft(&draft_id).await?;
     client.update_draft(&draft_id, "./updated_article.md").await?;
-    
+
     // 列出所有草稿
     let drafts = client.list_drafts(0, 10).await?;
-    
+
     println!("创建草稿: {}", draft_id);
     Ok(())
 }
@@ -104,7 +104,6 @@ code: "github"               # 可选：代码高亮主题
 fn main() {
     println!("你好，微信！");
 }
-```
 ```
 
 ## 可用主题
