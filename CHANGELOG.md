@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.4.2](https://github.com/compare/v0.4.1..v0.4.2) - 2025-08-03
+
+### Features
+
+- improve code block generation - use html escapes - ([89fc72a](https://github.com/commit/89fc72a6ad5d2f21510fb92b719291d89a91b1bc)) - Tyr Chen
+
+### Other
+
+- Update CHANGELOG.md - ([5072e9c](https://github.com/commit/5072e9c7f3f28d0166e50ae6b3e113f9bee64072)) - Tyr Chen
+
+---
 ## [0.4.1](https://github.com/compare/v0.4.0..v0.4.1) - 2025-08-03
 
 ### Bug Fixes
