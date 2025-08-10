@@ -292,15 +292,15 @@ impl WeChatHttpClient {
             .await?;
 
         // Check content length if available
-        if let Some(content_length) = response.content_length() {
-            if content_length > effective_max_size {
-                return Err(WeChatError::ImageUpload {
-                    path: url.to_string(),
-                    reason: format!(
-                        "Content too large: {content_length} bytes (max: {effective_max_size} bytes)"
-                    ),
-                });
-            }
+        if let Some(content_length) = response.content_length()
+            && content_length > effective_max_size
+        {
+            return Err(WeChatError::ImageUpload {
+                path: url.to_string(),
+                reason: format!(
+                    "Content too large: {content_length} bytes (max: {effective_max_size} bytes)"
+                ),
+            });
         }
 
         let mut downloaded_size = 0u64;

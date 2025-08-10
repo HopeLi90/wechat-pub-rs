@@ -885,11 +885,11 @@ impl DraftManager {
 
         // Search for matching title
         for draft in drafts {
-            if let Some(first_article) = draft.content.news_item.first() {
-                if first_article.title == title {
-                    info!("Found existing draft with matching title");
-                    return Ok(Some(draft.media_id));
-                }
+            if let Some(first_article) = draft.content.news_item.first()
+                && first_article.title == title
+            {
+                info!("Found existing draft with matching title");
+                return Ok(Some(draft.media_id));
             }
         }
 

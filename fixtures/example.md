@@ -91,6 +91,37 @@ async fn main() -> Result<()> {
 }
 ```
 
+```rust
+async fn submission_loop(
+    session_id: Uuid,
+    config: Arc<Config>,
+    auth: Option<CodexAuth>,
+    rx_sub: Receiver<Submission>,
+    tx_event: Sender<Event>,
+    ctrl_c: Arc<Notify>,
+) {
+    let mut sess: Option<Arc<Session>> = None;
+
+    loop {
+        let sub = tokio::select! {
+            res = rx_sub.recv() => match res {
+                Ok(sub) => sub,
+                Err(_) => break,
+            },
+            _ = ctrl_c.notified() => {
+                // 优雅处理中断
+                if let Some(sess) = sess.as_ref() {
+                    sess.abort();
+                }
+                continue;
+            },
+        };
+
+        // 处理提交...
+    }
+}
+```
+
 ## JavaScript Code with Special Characters
 
 ```javascript

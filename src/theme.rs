@@ -307,10 +307,6 @@ impl ThemeTemplate {
         // Clean up multiple consecutive <br/> tags
         processed = processed.replace("<br/><br/>", "<br/>");
 
-        // Handle spaces and tabs
-        processed = processed.replace("  ", "&nbsp;&nbsp;");
-        processed = processed.replace('\t', "&nbsp;&nbsp;&nbsp;&nbsp;");
-
         processed
     }
 }

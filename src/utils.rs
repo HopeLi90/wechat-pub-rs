@@ -95,25 +95,24 @@ static DANGEROUS_EXTENSIONS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| 
 /// Validates that a path is safe to access (prevents path traversal and dangerous files).
 pub fn is_safe_path(path: &Path) -> bool {
     // Allow files in system temp directories
-    if let Some(path_str) = path.to_str() {
-        if path_str.contains("/tmp/")
+    if let Some(path_str) = path.to_str()
+        && (path_str.contains("/tmp/")
             || path_str.contains("/var/folders/")
-            || path_str.contains("\\Temp\\")
+            || path_str.contains("\\Temp\\"))
+    {
+        // Still check for dangerous extensions in temp files
+        if let Some(extension) = path.extension().and_then(OsStr::to_str)
+            && DANGEROUS_EXTENSIONS.contains(&extension.to_lowercase().as_str())
         {
-            // Still check for dangerous extensions in temp files
-            if let Some(extension) = path.extension().and_then(OsStr::to_str) {
-                if DANGEROUS_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
-                    return false;
-                }
-            }
-            return true;
-        }
-    }
-    // Check for dangerous file extensions
-    if let Some(extension) = path.extension().and_then(OsStr::to_str) {
-        if DANGEROUS_EXTENSIONS.contains(&extension.to_lowercase().as_str()) {
             return false;
         }
+        return true;
+    }
+    // Check for dangerous file extensions
+    if let Some(extension) = path.extension().and_then(OsStr::to_str)
+        && DANGEROUS_EXTENSIONS.contains(&extension.to_lowercase().as_str())
+    {
+        return false;
     }
 
     // Check each component of the path
