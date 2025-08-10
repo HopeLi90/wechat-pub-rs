@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.5.2](https://github.com/compare/v0.5.1..v0.5.2) - 2025-08-10
+
+### Features
+
+- improve code block - ([b0d8e44](https://github.com/commit/b0d8e44d9f60fd12b313cfd56417b1c60da8c59f)) - Tyr Chen
+
+### Other
+
+- Update CHANGELOG.md - ([1ad3117](https://github.com/commit/1ad3117a6c96f0be08e70fa0bf55e70ba592eb74)) - Tyr Chen
+
+---
 ## [0.5.1](https://github.com/compare/v0.5.0..v0.5.1) - 2025-08-03
 
 ### Bug Fixes
