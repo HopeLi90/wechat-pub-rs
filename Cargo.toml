@@ -1,6 +1,6 @@
 [package]
 name = "wechat-pub-rs"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["tyr.chen@gmail.com>"]
 edition = "2024"
 license = "MIT"
@@ -30,7 +30,7 @@ reqwest = { version = "0.12", default-features = false, features = [
   "rustls-tls",
 ] }
 
-tokio = { version = "1.0", default-features = false, features = [
+tokio = { version = "1.47", default-features = false, features = [
   "fs",
   "time",
   "sync",
@@ -49,7 +49,7 @@ thiserror = "2.0"
 anyhow = "1.0"
 
 # Markdown processing
-comrak = "0.40"
+comrak = "0.41"
 syntect = "5.2"
 
 # Template engine
@@ -68,14 +68,14 @@ mime_guess = "2.0"
 blake3 = "1.8.2"
 
 # CSS processing
-regex = "1.5"
+regex = "1.11"
 css-inline = "0.17.0"
 
 # HTML parsing for better code block processing
 scraper = "0.23"
 
 # Random number generation for jitter
-fastrand = "2.0"
+fastrand = "2.3"
 
 # Async traits
 async-trait = "0.1"
@@ -84,4 +84,4 @@ async-trait = "0.1"
 tokio-test = "0.4"
 env_logger = "0.11"
 criterion = "0.7"
-tempfile = "3.0"
+tempfile = "3.20"
