@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.5.3](https://github.com/compare/v0.5.2..v0.5.3) - 2025-08-16
+
+### Miscellaneous Chores
+
+- update deps - ([4b07f35](https://github.com/commit/4b07f3571413ce63ef7312389b1c71c7f2238bef)) - Tyr Chen
+
+### Other
+
+- Update CHANGELOG.md - ([58f6913](https://github.com/commit/58f6913a4588427530b82cc09d3c7a1bcaefcc33)) - Tyr Chen
+
+---
 ## [0.5.2](https://github.com/compare/v0.5.1..v0.5.2) - 2025-08-10
 
 ### Features
