@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.6.0](https://github.com/compare/v0.5.3..v0.6.0) - 2025-08-31
+
+### Features
+
+- support mermaid chart - ([b9f20de](https://github.com/commit/b9f20defd561dd713248ffece7251041f1b67953)) - Tyr Chen
+
+### Other
+
+- Update CHANGELOG.md - ([a99b9f7](https://github.com/commit/a99b9f77cb0873e1d6776c83b39d7837aa654471)) - Tyr Chen
+
+---
 ## [0.5.3](https://github.com/compare/v0.5.2..v0.5.3) - 2025-08-16
 
 ### Miscellaneous Chores
