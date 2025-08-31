@@ -1,6 +1,6 @@
 [package]
 name = "wechat-pub-rs"
-version = "0.5.3"
+version = "0.6.0"
 authors = ["tyr.chen@gmail.com>"]
 edition = "2024"
 license = "MIT"
@@ -37,6 +37,7 @@ tokio = { version = "1.47", default-features = false, features = [
   "rt",
   "rt-multi-thread",
   "macros",
+  "process",
 ] }
 futures = "0.3"
 
@@ -72,7 +73,7 @@ regex = "1.11"
 css-inline = "0.17.0"
 
 # HTML parsing for better code block processing
-scraper = "0.23"
+scraper = "0.24"
 
 # Random number generation for jitter
 fastrand = "2.3"
@@ -80,8 +81,11 @@ fastrand = "2.3"
 # Async traits
 async-trait = "0.1"
 
+# UUID generation for temporary file names
+uuid = { version = "1.18", features = ["v4"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
 env_logger = "0.11"
 criterion = "0.7"
-tempfile = "3.20"
+tempfile = "3.21"

@@ -158,3 +158,40 @@ server:
     - logging
     - monitoring
 ```
+
+## Mermaid Charts
+
+```mermaid
+graph LR
+    subgraph "组织现实"
+        A[高层管理 - 活在幸福幻觉中]
+        B[中层管理 - 隔离层]
+        C[开发团队 - 享受自由]
+    end
+
+    A -.隔离.-> B
+    B -.隔离.-> C
+
+    style A fill:#ffcccb
+    style B fill:#ffffcc
+    style C fill:#ccffcc
+```
+
+Another one:
+
+```mermaid
+graph TD
+    A[锁定分析] --> B[切换成本]
+    A --> C[获得的价值]
+
+    B --> D[供应商锁定]
+    B --> E[产品锁定]
+    B --> F[版本锁定]
+    B --> G[数据锁定]
+    B --> H[技能锁定]
+    B --> I[心智锁定]
+
+    C --> J[开发速度]
+    C --> K[扩展能力]
+    C --> L[运维简化]
+```

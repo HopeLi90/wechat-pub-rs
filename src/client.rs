@@ -6,6 +6,7 @@ use crate::auth::TokenManager;
 use crate::error::{Result, WeChatError};
 use crate::http::WeChatHttpClient;
 use crate::markdown::{MarkdownContent, MarkdownParser};
+use crate::mermaid::MermaidProcessor;
 use crate::theme::ThemeManager;
 use crate::upload::{Article, DraftInfo, DraftManager, ImageUploader};
 use crate::utils;
@@ -187,9 +188,31 @@ impl WeChatClient {
         let mut content = self.parse_markdown_file(markdown_path).await?;
         debug!("Found {} images in content", content.images.len());
 
-        // Step 2: Upload images concurrently
+        // Step 1.5: Process Mermaid charts
         let base_dir = utils::get_base_directory(markdown_path).unwrap_or_else(|| Path::new("."));
+        let document_slug = MermaidProcessor::extract_slug_from_path(markdown_path);
+        let mermaid_processor = MermaidProcessor::new(base_dir.to_path_buf(), document_slug);
 
+        let (modified_content, mermaid_images) = mermaid_processor
+            .process_mermaid_content_with_source_path(
+                &content.content,
+                base_dir,
+                Some(markdown_path),
+            )
+            .await?;
+
+        // Update content with Mermaid-processed version
+        content.content = modified_content;
+
+        // Add Mermaid-generated images to the image list
+        content.images.extend(mermaid_images.clone());
+
+        debug!(
+            "Total images to upload (including Mermaid): {}",
+            content.images.len()
+        );
+
+        // Step 2: Upload images concurrently
         let upload_results = self
             .image_uploader
             .upload_images(content.images.clone(), base_dir)
@@ -267,6 +290,24 @@ impl WeChatClient {
         // Parse and process content (same as upload)
         let mut content = self.parse_markdown_file(markdown_path).await?;
         let base_dir = utils::get_base_directory(markdown_path).unwrap_or_else(|| Path::new("."));
+
+        // Process Mermaid charts
+        let document_slug = MermaidProcessor::extract_slug_from_path(markdown_path);
+        let mermaid_processor = MermaidProcessor::new(base_dir.to_path_buf(), document_slug);
+
+        let (modified_content, mermaid_images) = mermaid_processor
+            .process_mermaid_content_with_source_path(
+                &content.content,
+                base_dir,
+                Some(markdown_path),
+            )
+            .await?;
+
+        // Update content with Mermaid-processed version
+        content.content = modified_content;
+
+        // Add Mermaid-generated images to the image list
+        content.images.extend(mermaid_images);
 
         let upload_results = self
             .image_uploader
