@@ -471,9 +471,13 @@ impl MarkdownParser {
     /// Extracts front matter (YAML) from markdown content.
     fn extract_frontmatter(&self, markdown: &str) -> Result<(HashMap<String, String>, String)> {
         let mut metadata = HashMap::new();
-        let content = if let Some(stripped) = markdown.strip_prefix("---\n") {
+        let mut lf_char = "\n" ;
+        if markdown.contains("\r\n") {
+            lf_char = "\r\n" ;
+        } 
+        let content = if let Some(stripped) = markdown.strip_prefix(&format!("---{}",lf_char)) {
             // Find the end of front matter
-            if let Some(end_pos) = stripped.find("\n---\n") {
+            if let Some(end_pos) = stripped.find(&format!("{0}---{0}", lf_char)) {
                 let frontmatter = &stripped[..end_pos];
                 let content = &stripped[end_pos + 5..]; // skip "\n---\n"
 
